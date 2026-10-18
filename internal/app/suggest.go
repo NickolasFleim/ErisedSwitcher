@@ -28,6 +28,7 @@ func (a *App) initPredict() {
 	}
 	a.hist = h
 	a.pred = &predict.Predictor{Hist: h, Store: a.store}
+	a.pred.SetUseBase(a.cfg.Load().Suggest.BaseNextWords)
 	a.eng.SetPredictor(a.pred)
 	a.popup = win.NewPopup(a.onPopupClick)
 	// Индекс похожих слов строится ~1 с — в фоне, чтобы первое исправление не ждало.

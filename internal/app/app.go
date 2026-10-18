@@ -798,6 +798,9 @@ func (a *App) applyConfig(c *config.Config, save bool) error {
 	if c.Enabled != a.eng.Enabled() {
 		a.eng.SetEnabled(c.Enabled)
 	}
+	if a.pred != nil {
+		a.pred.SetUseBase(c.Suggest.BaseNextWords)
+	}
 	if c.LayoutEN != old.LayoutEN || c.LayoutRU != old.LayoutRU || c.LayoutUK != old.LayoutUK || c.Languages != old.Languages {
 		a.findLayouts()
 		go prepareSimilar()

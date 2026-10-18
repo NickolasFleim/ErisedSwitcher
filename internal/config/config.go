@@ -198,6 +198,8 @@ type Suggest struct {
 	Scale float64 `json:"scale"`
 	// Искать курсор ввода через специальные возможности Windows (нужно для Chrome, Edge, Office).
 	UseAccessibility bool `json:"use_accessibility"`
+	// Пока ваша история набора пуста — подсказывать частые сочетания слов из встроенной базы.
+	BaseNextWords bool `json:"base_next_words"`
 	// Предел пар слов в истории набора.
 	MaxPairs int `json:"max_pairs"`
 }
@@ -373,6 +375,7 @@ func Default() *Config {
 			NextMinCount:     2,
 			Scale:            1.0,
 			UseAccessibility: true,
+			BaseNextWords:    true,
 			MaxPairs:         60000,
 		},
 		Learn: Learn{

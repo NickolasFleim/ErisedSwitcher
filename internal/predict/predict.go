@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"unicode"
 
 	"erised/internal/keymap"
@@ -48,7 +49,12 @@ type Suggestion struct {
 type Predictor struct {
 	Hist  *History
 	Store *words.Store
+	// useBase — учитывать стартовую базу частых сочетаний слов (меняется из окна настроек).
+	useBase atomic.Bool
 }
+
+// SetUseBase включает стартовую базу частых сочетаний слов.
+func (p *Predictor) SetUseBase(v bool) { p.useBase.Store(v) }
 
 // Вес вашей истории в оценке.
 const (
@@ -59,10 +65,14 @@ const (
 )
 
 func (p *Predictor) boost(l keymap.Lang, prev, w string) float64 {
-	if p.Hist == nil {
-		return 0
+	b := 0.0
+	if p.useBase.Load() {
+		b += baseBoost(l, prev, w)
 	}
-	b := userWeight * math.Log2(1+float64(p.Hist.Count(l, w)))
+	if p.Hist == nil {
+		return b
+	}
+	b += userWeight * math.Log2(1+float64(p.Hist.Count(l, w)))
 	if prev != "" {
 		b += pairWeight * math.Log2(1+float64(p.Hist.Pair(l, prev, w)))
 	}
@@ -186,14 +196,31 @@ func (p *Predictor) Correct(l keymap.Lang, word, prev string, n int) []Suggestio
 	return t.list
 }
 
-// NextWords — слова, которые вы чаще всего набирали после prev.
+// NextWords — слова, которые вы чаще всего набирали после prev; если ваших мало —
+// добавляются частые сочетания из стартовой базы (ваши всегда первыми).
 func (p *Predictor) NextWords(l keymap.Lang, prev string, n int, minCount uint32) []Suggestion {
-	if p.Hist == nil || prev == "" {
+	if prev == "" || n <= 0 {
 		return nil
 	}
 	var out []Suggestion
-	for _, wc := range p.Hist.Next(l, prev, n, minCount) {
-		out = append(out, Suggestion{Word: wc.Word, Kind: Next, Score: float64(wc.Count)})
+	seen := map[string]bool{}
+	if p.Hist != nil {
+		for _, wc := range p.Hist.Next(l, prev, n, minCount) {
+			out = append(out, Suggestion{Word: wc.Word, Kind: Next, Score: 1000 + float64(wc.Count)})
+			seen[wc.Word] = true
+		}
+	}
+	if p.useBase.Load() && len(out) < n {
+		if b := base(l); b != nil {
+			for _, wc := range b.next[prev] {
+				if len(out) >= n {
+					break
+				}
+				if !seen[wc.Word] {
+					out = append(out, Suggestion{Word: wc.Word, Kind: Next, Score: float64(wc.Count)})
+				}
+			}
+		}
 	}
 	return out
 }

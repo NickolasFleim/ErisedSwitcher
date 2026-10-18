@@ -6,5 +6,6 @@ It includes or is built from the following third-party works:
 | Component | Where | License |
 |---|---|---|
 | [FrequencyWords](https://github.com/hermitdave/FrequencyWords) word frequency lists (© Hermit Dave), derived from OpenSubtitles | `internal/lang/data/*.txt.gz`, `*.known` | MIT (`internal/lang/data/LICENSE-FrequencyWords.txt`) |
+| [Universal Dependencies](https://universaldependencies.org/) treebanks UD_English-EWT, UD_Russian-Taiga, UD_Russian-GSD, UD_Ukrainian-ParlaMint — word-pair counts only | `internal/predict/data/*.pairs.gz` | CC BY-SA 4.0 (`internal/predict/data/ATTRIBUTION.md`) |
 | [go-webview2](https://github.com/jchv/go-webview2), [go-winloader](https://github.com/jchv/go-winloader) | `vendor/` | MIT |
 | [golang.org/x/sys](https://github.com/golang/sys) | `vendor/` | BSD-3-Clause |

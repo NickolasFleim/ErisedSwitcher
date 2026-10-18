@@ -176,3 +176,21 @@ func TestSuggestSpeed(t *testing.T) {
 		t.Fatalf("слишком медленно: %v на нажатие", per)
 	}
 }
+
+func TestBaseNextWords(t *testing.T) {
+	s := newSimPred(t, "notepad.exe", keymap.RU)
+	s.e.pred.SetUseBase(true)
+	s.typeAs("может ", keymap.RU)
+	it := s.items()
+	if len(it) == 0 || it[0] != "быть" {
+		t.Fatalf("после «может» из стартовой базы ожидалось «быть»: %v", it)
+	}
+	// Ваша история важнее базы.
+	for i := 0; i < 3; i++ {
+		s.typeAs("может пригодиться\n", keymap.RU)
+	}
+	s.typeAs("может ", keymap.RU)
+	if it := s.items(); len(it) == 0 || it[0] != "пригодиться" {
+		t.Fatalf("ваша пара должна быть первой: %v", it)
+	}
+}
