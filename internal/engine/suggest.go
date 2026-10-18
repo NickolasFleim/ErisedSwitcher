@@ -205,6 +205,7 @@ func (e *Engine) autoOptions(r *config.Effective, typed string, l keymap.Lang, t
 		EndingCaution: r.AutocorrectEndingCaution,
 		TypedZipf:     typedZipf,
 		MisspellGap:   2.0,
+		Lang:          l,
 	}
 	if o.EndingCaution {
 		if m := lang.Get(l); m != nil {
@@ -234,7 +235,7 @@ func (e *Engine) canAutocorrect(t *token, r *config.Effective) (typedCore string
 		return "", 0, false
 	}
 	for _, k := range t.keys {
-		if keymap.IsDigit(k.VK) {
+		if keymap.IsDigit(k.VK) && !k.Shift {
 			return "", 0, false
 		}
 	}

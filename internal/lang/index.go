@@ -140,7 +140,7 @@ func (m *Model) loadKnown() {
 // Exists — встречалась ли такая форма слова в большом корпусе (словарь подсказок
 // или список всех форм; ~1% ложных «да»). Нужна, чтобы не «исправлять» правильные слова.
 func (m *Model) Exists(w string) bool {
-	if _, ok := m.words[w]; ok {
+	if _, ok := m.Zipf(w); ok {
 		return true
 	}
 	if m.knownBits == 0 {

@@ -12,17 +12,20 @@ import (
 
 // Verdict — результат проверки слова с объяснением (виден в журнале и на вкладке «Проверка»).
 type Verdict struct {
-	Switch   bool        `json:"switch"`
-	Reason   string      `json:"reason"`
-	CurLang  keymap.Lang `json:"-"`
-	AltLang  keymap.Lang `json:"-"`
-	AltName  string      `json:"alt_lang"`  // в какую раскладку переключить
-	Cur      string      `json:"cur"`       // как слово выглядит сейчас
-	Alt      string      `json:"alt"`       // как оно выглядело бы в другой раскладке
-	CurScore float64     `json:"cur_score"` // оценка букв текущего варианта
-	AltScore float64     `json:"alt_score"`
-	CurZipf  float32     `json:"cur_zipf"` // частотность (0 — нет в словаре)
-	AltZipf  float32     `json:"alt_zipf"`
+	Switch  bool        `json:"switch"`
+	Reason  string      `json:"reason"`
+	CurLang keymap.Lang `json:"-"`
+	AltLang keymap.Lang `json:"-"`
+	AltName string      `json:"alt_lang"` // в какую раскладку переключить
+	Cur     string      `json:"cur"`      // как слово выглядит сейчас
+	Alt     string      `json:"alt"`      // как оно выглядело бы в другой раскладке
+	// Чем заменить, если не просто Alt: знаки по краям слова оставлены как набраны
+	// («ghbdtn,» → «привет,», а не «приветб»). Пусто — Alt.
+	Text     string  `json:"text,omitempty"`
+	CurScore float64 `json:"cur_score"` // оценка букв текущего варианта
+	AltScore float64 `json:"alt_score"`
+	CurZipf  float32 `json:"cur_zipf"` // частотность (0 — нет в словаре)
+	AltZipf  float32 `json:"alt_zipf"`
 }
 
 const badScore = -5.0
@@ -77,7 +80,47 @@ func betterSwitch(a, b Verdict) bool {
 }
 
 // decidePair — набрано ли слово в cur, а должно было быть в alt.
+// Если слово целиком не подходит, пробует его без знаков по краям: запятая, точка, кавычка,
+// скобка в текущей раскладке — это буквы б, ю, э, х во второй, и «ghbdtn,» иначе стало бы «приветб».
 func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt, start bool) Verdict {
+	v := decideWhole(keys, cur, alt, r, st, final, prevAlt, start)
+	// Целиком — словарное слово: так и оставляем. Целиком подошло только по статистике букв —
+	// проверим, не словарное ли слово без знаков по краям («примерб» хуже, чем «пример,»).
+	if !final || (v.Switch && v.AltZipf > 0) {
+		return v
+	}
+	lead, trail := punctEdges(keys, cur, alt)
+	if lead+trail == 0 || lead+trail >= len(keys) {
+		return v
+	}
+	core := keys[lead : len(keys)-trail]
+	v2 := decideWhole(core, cur, alt, r, st, final, prevAlt, start)
+	if !v2.Switch || (v.Switch && v2.AltZipf == 0) {
+		return v
+	}
+	v2.Text = keymap.RenderAll(keys[:lead], cur) + v2.Alt + keymap.RenderAll(keys[len(keys)-trail:], cur)
+	v2.Cur, v2.Alt = v.Cur, v2.Text
+	v2.Reason += "; знаки по краям оставлены как набраны"
+	return v2
+}
+
+// punctEdges — сколько клавиш в начале и в конце слова в текущей раскладке дают знаки,
+// а во второй — буквы.
+func punctEdges(keys []keymap.Key, cur, alt keymap.Lang) (lead, trail int) {
+	conflict := func(k keymap.Key) bool {
+		c, a := keymap.Render(k, cur), keymap.Render(k, alt)
+		return c != 0 && !unicode.IsLetter(c) && !unicode.IsDigit(c) && unicode.IsLetter(a)
+	}
+	for lead < len(keys) && conflict(keys[lead]) {
+		lead++
+	}
+	for trail < len(keys)-lead && conflict(keys[len(keys)-1-trail]) {
+		trail++
+	}
+	return lead, trail
+}
+
+func decideWhole(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt, start bool) Verdict {
 	v := Verdict{CurLang: cur, Cur: keymap.RenderAll(keys, cur), Alt: keymap.RenderAll(keys, alt)}
 	if cur == keymap.Unknown {
 		v.Reason = "раскладка не определена"
@@ -85,7 +128,7 @@ func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st
 	}
 	if r.SkipWithDigits {
 		for _, k := range keys {
-			if keymap.IsDigit(k.VK) {
+			if keymap.IsDigit(k.VK) && !k.Shift {
 				v.Reason = "в слове есть цифры"
 				return v
 			}
@@ -148,6 +191,13 @@ func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st
 		return decideEarly(v, curCore, curOK, altCore, cm, am, r, st, cur, alt)
 	}
 
+	// «<sk» → «Был», «:tye» → «Жену»: по краям знаки, которые во втором языке — буквы слова.
+	// Такое «слово» с отрезанными знаками («sk») может быть в словаре, но слово целиком — нет.
+	if lead, trail := punctEdges(keys, cur, alt); lead+trail > 0 && v.AltZipf >= 3.5 && v.AltZipf-v.CurZipf >= 1.0 &&
+		!(st != nil && curOK && st.IsWord(cur, curCore)) {
+		v.Switch, v.Reason = true, "знаки по краям во втором языке — буквы, и вместе это слово"
+		return v
+	}
 	if curOK && (v.CurZipf > 0 || (st != nil && st.IsWord(cur, curCore))) {
 		v.Reason = "текущий вариант — известное слово"
 		return v

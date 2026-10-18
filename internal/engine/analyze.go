@@ -2,6 +2,7 @@ package engine
 
 import (
 	"strings"
+	"unicode"
 
 	"erised/internal/config"
 	"erised/internal/keymap"
@@ -63,9 +64,11 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *pr
 		}
 		if res.Error == "" {
 			res.Final = Decide(keys, l, &r, st, true, prev)
-			prev = l
-			if res.Final.Switch {
-				prev = res.Final.AltLang
+			if strings.IndexFunc(w, unicode.IsLetter) >= 0 { // числа и знаки язык фразы не меняют
+				prev = l
+				if res.Final.Switch {
+					prev = res.Final.AltLang
+				}
 			}
 			if r.EarlySwitch {
 				for i := r.EarlyMinLen; i < len(keys); i++ {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"unicode"
+	"unicode/utf8"
 
 	"erised/internal/keymap"
 	"erised/internal/lang"
@@ -242,6 +243,7 @@ type CorrectOptions struct {
 	// и отличается не больше чем на одну ошибку.
 	TypedZipf   float64
 	MisspellGap float64
+	Lang        keymap.Lang // язык слова (для проверки, похоже ли отличие на ошибку написания)
 }
 
 // MisspellMaxZipf — слово из словаря с такой или меньшей частотностью может быть частой ошибкой.
@@ -282,6 +284,12 @@ func DecideAuto(word string, cands []Suggestion, o CorrectOptions) AutoDecision 
 		d.Reason = "несколько похожих вариантов, выбрать уверенно нельзя"
 	case o.TypedZipf > 0 && (best.Zipf-o.TypedZipf < o.MisspellGap || best.Dist > 1.0+1e-9):
 		d.Reason = "набранное слово есть в словаре, а правильный вариант не намного частотнее"
+	case extraEnding(word, best.Word):
+		d.Reason = "набранное — это вариант с лишними буквами в конце: скорее всего, незнакомая форма слова"
+	case firstLetterChanged(word, best.Word):
+		d.Reason = "отличается первая буква: скорее другое слово, чем опечатка"
+	case o.TypedZipf > 0 && !MisspellLike(word, best.Word, o.Lang):
+		d.Reason = "набранное слово есть в словаре, и отличие не похоже на ошибку написания"
 	case o.EndingCaution && endingOnly(word, best.Word) && o.TypedNaturalness > -1.6:
 		d.Reason = "отличается только окончанием — возможно, другая форма слова"
 	default:
@@ -335,4 +343,20 @@ func endingOnly(typed, cand string) bool {
 		i++
 	}
 	return i >= 4 && i >= len(a)-2 && i >= len(b)-2
+}
+
+// extraEnding — набранное слово = подсказка + 1–3 буквы (премьерами → премьера, удачах → удача):
+// это скорее форма слова, которой нет в словаре, чем опечатка.
+func extraEnding(typed, best string) bool {
+	return len(typed) > len(best) && strings.HasPrefix(typed, best) && utf8.RuneCountInString(typed)-utf8.RuneCountInString(best) <= 3
+}
+
+// firstLetterChanged — отличается первая буква (хохоте → охоте, иррегулярных → регулярных).
+// Перестановку двух первых букв (hte → the) опечаткой считаем.
+func firstLetterChanged(typed, best string) bool {
+	a, b := []rune(typed), []rune(best)
+	if len(a) == 0 || len(b) == 0 || a[0] == b[0] {
+		return false
+	}
+	return !(len(a) > 1 && len(b) > 1 && a[0] == b[1] && a[1] == b[0])
 }

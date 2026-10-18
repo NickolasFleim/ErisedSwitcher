@@ -36,3 +36,83 @@ func TestSingleLetterWords(t *testing.T) {
 	s2.typeAs("в доме ", keymap.RU)
 	expect(t, s2.text(), "в доме ")
 }
+
+func TestPunctuationEdges(t *testing.T) {
+	cases := [][2]string{
+		{"ghbdtn. ", "привет. "},
+		{"ghbvth. ", "примерю "}, // «примерю» — тоже слово, клавиши важнее
+		{"ghbdtn. ", "привет. "},
+		{"ghbvth. ", "примерю "}, // «примерю» — тоже слово, клавиши важнее
+		{"\"ghbvth\" ", "\"пример\" "},
+		{"(ghbvth) ", "(пример) "},
+		{"ghbdtn. ", "привет. "},
+		{"ghbvth. ", "примерю "}, // «примерю» — тоже слово, клавиши важнее
+		{"lf, ", "да, "},         // короткое слово — посреди слова не переключается
+		{"ghbdtn. ", "привет. "},
+		{"ghbvth. ", "примерю "}, // «примерю» — тоже слово, клавиши важнее // ? — это русская запятая на той же клавише
+		{"hello, ", "hello, "},
+	}
+	for _, c := range cases {
+		s := newSimPred(t, "notepad.exe", keymap.EN)
+		noEarly(s) // посреди слова раскладка уже переключилась бы, и знак набрался бы в русской
+		s.typeAs(c[0], keymap.EN)
+		if got := s.text(); got != c[1] {
+			t.Errorf("%q: %q, ожидалось %q", c[0], got, c[1])
+		}
+	}
+	// Отмена возвращает как было.
+	s := newSimPred(t, "notepad.exe", keymap.EN)
+	noEarly(s)
+	s.typeAs("ghbvth, ", keymap.EN)
+	s.press(keymap.VK_BACK, Mods{})
+	expect(t, s.text(), "ghbvth, ")
+}
+
+func TestNumbersDontBlockContext(t *testing.T) {
+	s := newSimPred(t, "notepad.exe", keymap.EN)
+	s.typeAs("10 z ", keymap.EN) // число — не английское слово: «я» в начале фразы
+	expect(t, s.text(), "10 я ")
+}
+
+func TestRetroShortWord(t *testing.T) {
+	cases := [][2]string{
+		{"ye crfpfk ", "ну сказал "}, // «ye» само не исправилось — исправляется вместе со следующим
+		{",sk ujhjl ", "был город "},
+		{"hello ye crfpfk ", "hello ye сказал "}, // после английского слова — не трогаем
+	}
+	for _, c := range cases {
+		s := newSimPred(t, "notepad.exe", keymap.EN)
+		noEarly(s)
+		s.typeAs(c[0], keymap.EN)
+		if got := s.text(); got != c[1] {
+			t.Errorf("%q: %q, ожидалось %q", c[0], got, c[1])
+		}
+	}
+	// Backspace возвращает обе части.
+	s := newSimPred(t, "notepad.exe", keymap.EN)
+	noEarly(s)
+	s.typeAs("ye crfpfk ", keymap.EN)
+	s.press(keymap.VK_BACK, Mods{})
+	expect(t, s.text(), "ye crfpfk ")
+}
+
+func TestRetroWithEarlySwitch(t *testing.T) {
+	s := newSimPred(t, "notepad.exe", keymap.EN) // посреди слова переключение включено
+	s.typeAs("Ye? crfpfk ", keymap.EN)
+	expect(t, s.text(), "Ну, сказал ")
+	s2 := newSimPred(t, "notepad.exe", keymap.EN)
+	s2.typeAs("ye crfp", keymap.EN) // «ye» исправилось вместе с началом следующего слова
+	expect(t, s2.text(), "ну сказ")
+	s2.press(keymap.VK_BACK, Mods{})
+	expect(t, s2.text(), "ye crfp")
+}
+
+func TestEdgeLettersMakeWord(t *testing.T) {
+	s := newSimPred(t, "notepad.exe", keymap.EN)
+	noEarly(s)
+	s.typeAs("<sk ujhjl ", keymap.EN)
+	expect(t, s.text(), "Был город ")
+	s2 := newSimPred(t, "notepad.exe", keymap.EN)
+	s2.typeAs("it. so, ", keymap.EN) // английские слова со знаками не трогаем
+	expect(t, s2.text(), "it. so, ")
+}

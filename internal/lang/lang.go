@@ -153,6 +153,10 @@ func (m *Model) train() {
 // Zipf возвращает частотность слова (0, false — нет в словаре).
 func (m *Model) Zipf(w string) (float32, bool) {
 	z, ok := m.words[w]
+	if !ok && strings.ContainsRune(w, '\'') {
+		// В английском словаре слова записаны без апострофа: i'm → im, don't → dont.
+		z, ok = m.words[strings.ReplaceAll(w, "'", "")]
+	}
 	return z, ok
 }
 
@@ -174,6 +178,11 @@ func (m *Model) HasPrefix(p string, minZipf float32) bool {
 // CharScore — средний log10 вероятности каждой буквы (чем ближе к 0, тем «естественнее»).
 // complete=true добавляет маркер конца слова.
 func (m *Model) CharScore(w string, complete bool) float64 {
+	if strings.ContainsRune(w, '\'') {
+		if _, ok := m.words[w]; !ok {
+			w = strings.ReplaceAll(w, "'", "") // модель букв обучена без апострофов
+		}
+	}
 	rs := append([]rune{'^', '^'}, []rune(w)...)
 	if complete {
 		rs = append(rs, '$')

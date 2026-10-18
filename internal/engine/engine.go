@@ -5,8 +5,10 @@
 package engine
 
 import (
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"erised/internal/config"
 	"erised/internal/keymap"
@@ -116,6 +118,10 @@ type correction struct {
 	learned   string // слово, которое было собрано этим действием (для отката)
 	learnedL  keymap.Lang
 	histIdx   int // индекс токена в истории (-1 — текущий)
+	// Вместе со словом исправлено и предыдущее короткое (z nt,z → я тебя):
+	// prevIdx — его индекс в истории, prefix — сколько клавиш (с пробелом) оно занимает в origKeys.
+	prevIdx int // 0 — нет; иначе индекс+1
+	prefix  int
 }
 
 // Engine — состояние ядра. Методы безопасны для вызова из одного потока хука;
@@ -382,6 +388,7 @@ func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 			c := &correction{origKeys: keys, origLang: e.cur.lang, newLang: alt, newLen: len(keys), auto: true, histIdx: -1}
 			act := Action{Kind: ActReplace, Backspaces: len(e.cur.keys), Text: keymap.RenderAll(keys, alt),
 				Keys: keys, Target: e.targetFor(r, alt), Reason: v.Reason, From: keymap.RenderAll(keys, e.cur.lang)}
+			e.applyRetro(token{keys: keys, lang: e.cur.lang}, alt, r, &act, c, ctx)
 			e.cur.keys, e.cur.lang, e.cur.corrected = keys, alt, true
 			e.last, e.fresh = c, true
 			return Result{Swallow: true, Actions: []Action{act}}
@@ -541,10 +548,7 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		return finish(e.finishWord(t, vk, newLine, ctx))
 	}
 
-	prevLang := keymap.Unknown
-	if n := len(e.hist); n > 0 && e.hist[n-1].trail == keymap.VK_SPACE && len(e.hist[n-1].keys) > 0 {
-		prevLang = e.hist[n-1].lang
-	}
+	prevLang := e.prevWordLang()
 	v := Decide(t.keys, t.lang, r, e.store, true, prevLang)
 	e.log("конец слова", ctx, v)
 	if v.Switch {
@@ -552,6 +556,13 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		c := &correction{origKeys: t.keys, origLang: t.lang, newLang: alt, newLen: len(t.keys), trail: vk, auto: true, histIdx: len(e.hist)}
 		act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: keymap.RenderAll(t.keys, alt), Keys: t.keys,
 			Target: e.targetFor(r, alt), Trail: []uint16{vk}, Reason: v.Reason, From: keymap.RenderAll(t.keys, t.lang)}
+		if v.Text != "" {
+			// Знаки по краям остаются как набраны — их нельзя повторить клавишами в другой раскладке.
+			act.Text, act.Keys = v.Text, nil
+			c.newLen = len([]rune(v.Text))
+			t.mixed = true // на экране не то, что дают эти клавиши в одной раскладке
+		}
+		e.applyRetro(t, alt, r, &act, c, ctx)
 		t.lang, t.corrected = alt, true
 		e.learnWord(&t, ctx)
 		e.pushHist(t)
@@ -587,7 +598,7 @@ func (e *Engine) learnPassive(t token, ctx *Context) {
 		return
 	}
 	for _, k := range t.keys {
-		if keymap.IsDigit(k.VK) {
+		if keymap.IsDigit(k.VK) && !k.Shift {
 			return
 		}
 	}
@@ -652,10 +663,11 @@ func (e *Engine) undo(ctx *Context, byBackspace bool) Result {
 	// Состояние буфера.
 	if c.histIdx == -1 {
 		e.cur.lang, e.cur.corrected = c.origLang, true // не исправлять это слово повторно
-		e.cur.keys = c.origKeys
+		e.cur.keys = c.origKeys[c.prefix:]
 	} else if c.histIdx >= 0 && c.histIdx < len(e.hist) {
 		e.hist[c.histIdx].lang = c.origLang
 		e.hist[c.histIdx].corrected = true
+
 	} else if c.histIdx == -2 {
 		for i := range e.hist {
 			e.hist[i].lang = e.hist[i].lang.Other()
@@ -664,9 +676,12 @@ func (e *Engine) undo(ctx *Context, byBackspace bool) Result {
 			e.cur.lang = e.cur.lang.Other()
 		}
 	}
+	if i := c.prevIdx - 1; i >= 0 && i < len(e.hist) {
+		e.hist[i].lang, e.hist[i].corrected, e.hist[i].mixed = c.origLang, true, false
+	}
 	// Сбор исключений: вы отменили автоисправление — значит, исходное слово правильное.
 	if c.auto {
-		if core, ok := lang.Core(keymap.RenderAll(c.origKeys, c.origLang), c.origLang); ok && e.store != nil && e.cfg.Learn.Enabled {
+		if core, ok := lang.Core(keymap.RenderAll(c.origKeys[c.prefix:], c.origLang), c.origLang); ok && e.store != nil && e.cfg.Learn.Enabled {
 			l := &e.cfg.Learn
 			if c.histIdx == -1 {
 				// Отмена «на лету» — слово ещё не дописано; запоминать нечего.
@@ -936,4 +951,106 @@ func (e *Engine) runHotkey(a HotkeyAction, ctx *Context) Result {
 	}
 	res.Swallow = true
 	return res
+}
+
+// prevWordLang — язык предыдущего слова фразы. Числа и знаки («10», «—», «2024») не в счёт:
+// «10 vbyen» решается так же, как «vbyen» в начале фразы. Unknown — фраза только началась.
+func (e *Engine) prevWordLang() keymap.Lang {
+	for i := len(e.hist) - 1; i >= 0; i-- {
+		t := e.hist[i]
+		if t.trail != keymap.VK_SPACE || len(t.keys) == 0 {
+			return keymap.Unknown
+		}
+		if hasLetters(t) {
+			return t.lang
+		}
+	}
+	return keymap.Unknown
+}
+
+// hasLetters — есть ли в слове буквы (в той раскладке, в которой оно на экране).
+func hasLetters(t token) bool {
+	for _, r := range keymap.RenderAll(t.keys, t.lang) {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// retroPrev — исправить ли вместе со словом предыдущее короткое слово (1–3 буквы).
+// Само по себе оно не исправилось — не хватило уверенности («yt» может быть и английским
+// сокращением), но следующее слово уверенно оказалось на втором языке: «yt pyf.» → «не знаю».
+func (e *Engine) retroPrev(t token, alt keymap.Lang, r *config.Effective) (int, Verdict, bool) {
+	n := len(e.hist)
+	if n == 0 {
+		return 0, Verdict{}, false
+	}
+	p := e.hist[n-1]
+	if p.trail != keymap.VK_SPACE || p.corrected || p.mixed || p.seeded || p.lang != t.lang ||
+		len(p.keys) == 0 || len(p.keys) > 3 || !hasLetters(p) || (e.last != nil && e.last.histIdx == n-1) {
+		return 0, Verdict{}, false
+	}
+	// Слово должно быть первым во фразе или после слова на втором языке, как и сейчас.
+	before := keymap.Unknown
+	saved := e.hist
+	e.hist = e.hist[:n-1]
+	before = e.prevWordLang()
+	e.hist = saved
+	if before != keymap.Unknown && before != alt {
+		return 0, Verdict{}, false
+	}
+	v := decidePair(p.keys, p.lang, alt, r, e.store, true, true, false)
+	if v.Switch {
+		return n - 1, v, true
+	}
+	// Короткое слово, которое во втором языке очень частое, а в текущем — редкое или незнакомое.
+	curCore, curOK := lang.Core(v.Cur, p.lang)
+	altCore, altOK := lang.Core(v.Alt, alt)
+	if !altOK || (curOK && r.Prefer[curCore]) {
+		return 0, Verdict{}, false
+	}
+	if e.store != nil && (e.store.IsException(p.lang, strings.ToLower(v.Cur)) || (curOK && (e.store.IsException(p.lang, curCore) || e.store.IsWord(p.lang, curCore)))) {
+		return 0, Verdict{}, false
+	}
+	az, _ := lang.Get(alt).Zipf(altCore)
+	var cz float32
+	if curOK {
+		cz, _ = lang.Get(p.lang).Zipf(curCore)
+	}
+	if (az >= 4.5 && cz < 4.0 && az-cz >= 1.5) || (az >= 5.5 && az-cz >= 2.0) {
+		v.Switch, v.Reason = true, "короткое частое слово во втором языке, следующее слово тоже на нём"
+		v.AltZipf, v.CurZipf = az, cz
+		return n - 1, v, true
+	}
+	return 0, Verdict{}, false
+}
+
+// applyRetro добавляет к исправлению слова t предыдущее короткое слово, если оно было набрано
+// в той же «не той» раскладке (см. retroPrev).
+func (e *Engine) applyRetro(t token, alt keymap.Lang, r *config.Effective, act *Action, c *correction, ctx *Context) {
+	pi, pv, ok := e.retroPrev(t, alt, r)
+	if !ok {
+		return
+	}
+	p := &e.hist[pi]
+	sp := keymap.Key{VK: keymap.VK_SPACE}
+	act.Backspaces += len(p.keys) + 1
+	act.Text = pv.Alt + " " + act.Text
+	act.From = keymap.RenderAll(p.keys, p.lang) + " " + act.From
+	if act.Keys != nil && pv.Text == "" {
+		act.Keys = append(append(append([]keymap.Key(nil), p.keys...), sp), act.Keys...)
+	} else {
+		act.Keys = nil
+	}
+	c.origKeys = append(append(append([]keymap.Key(nil), p.keys...), sp), c.origKeys...)
+	c.prefix = len(p.keys) + 1
+	c.newLen = len([]rune(act.Text))
+	c.prevIdx = pi + 1
+	p.lang, p.corrected = alt, true
+	if pv.Text != "" {
+		p.mixed = true
+	}
+	act.Reason += "; предыдущее короткое слово тоже"
+	e.log("задним числом", ctx, pv)
 }
