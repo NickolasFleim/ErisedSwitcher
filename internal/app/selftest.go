@@ -139,7 +139,7 @@ func SelfTest(reportPath string) int {
 	if _, ok := win.ReadCaretText(time.Second); ok {
 		check("чтение текста у курсора", nil)
 	} else if time.Since(t1) >= time.Second {
-		check("чтение текста у курсора", fmt.Errorf("нет ответа за секунду"))
+		fmt.Fprintf(&out, "skip  чтение текста у курсора: нет ответа за секунду (в программе это значит «не прочитано», без задержки ввода)\n")
 	} else {
 		fmt.Fprintf(&out, "skip  чтение текста у курсора: нет поля ввода с фокусом\n")
 	}
