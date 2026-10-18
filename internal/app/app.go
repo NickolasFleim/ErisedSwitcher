@@ -25,6 +25,7 @@ import (
 	"erised/internal/lang"
 	"erised/internal/predict"
 	"erised/internal/settingswin"
+	"erised/internal/stats"
 	"erised/internal/trayicon"
 	"erised/internal/webui"
 	"erised/internal/win"
@@ -34,7 +35,7 @@ import (
 // Version — версия программы. При сборке релиза подставляется из тега:
 // go build -ldflags "-X erised/internal/app.Version=1.4.0" (так она не разойдётся с тегом,
 // иначе программа считала бы выпуск на GitHub новее себя и обновлялась бы без конца).
-var Version = "1.4.2"
+var Version = "1.5.0"
 
 // AppName — название программы.
 const AppName = "Erised Switcher"
@@ -119,6 +120,7 @@ type App struct {
 	pred        *predict.Predictor
 	popup       *win.Popup
 	flash       *win.Popup
+	stats       *stats.Store
 	flashSeq    atomic.Uint64
 	popupWindow atomic.Uint64 // окно, для которого показана полоска
 
@@ -233,6 +235,12 @@ func Run() int {
 	go lang.Preload()
 	a.eng = engine.New(cfg, st)
 	a.eng.SetLogger(a.addLog)
+	a.stats = stats.Load(filepath.Join(a.dir, "stats.json"))
+	a.eng.SetStats(func(ev engine.StatEvent) {
+		// Слова для разбора — только если вы так решили, или в режиме «только наблюдать».
+		ex := a.cfg.Load().StatsExamples || strings.HasPrefix(ev.Kind, "would_")
+		a.stats.Add(ev.Kind, ev.App, ev.From, ev.To, ev.Lang.String(), ex)
+	})
 	a.findLayouts() // до подсказок: от включённых языков зависит, какие индексы строить
 	a.initPredict()
 
@@ -296,6 +304,9 @@ func Run() int {
 	}
 	if a.hist != nil {
 		_ = a.hist.SaveIfDirty()
+	}
+	if a.stats != nil {
+		_ = a.stats.SaveIfDirty()
 	}
 	log.Printf("Erised Switcher завершена")
 	return 0
@@ -897,6 +908,11 @@ func (a *App) checkFiles() {
 		if a.hist != nil {
 			if err := a.hist.SaveIfDirty(); err != nil {
 				log.Printf("typing.json: %v", err)
+			}
+		}
+		if a.stats != nil {
+			if err := a.stats.SaveIfDirty(); err != nil {
+				log.Printf("stats.json: %v", err)
 			}
 		}
 		if err := a.backupNow(false); err != nil {

@@ -133,6 +133,7 @@ type Engine struct {
 	store   *words.Store
 	enabled bool
 	logf    func(LogEntry)
+	statf   func(StatEvent)
 
 	window uintptr
 	pred   *predict.Predictor
@@ -181,6 +182,25 @@ func (e *Engine) SetConfig(cfg *config.Config) {
 
 // SetLogger задаёт обработчик журнала решений.
 func (e *Engine) SetLogger(f func(LogEntry)) { e.mu.Lock(); e.logf = f; e.mu.Unlock() }
+
+// StatEvent — событие для замера точности: что исправлено, что отменено, что пропущено.
+// Вызывается из потока перехвата под блокировкой ядра — обработчик должен быть быстрым.
+type StatEvent struct {
+	Kind string // layout, typo, undo_layout, undo_typo, manual, would_layout, would_typo
+	App  string
+	From string // что было на экране
+	To   string // на что исправлено (или исправилось бы)
+	Lang keymap.Lang
+}
+
+// SetStats задаёт обработчик событий замера.
+func (e *Engine) SetStats(f func(StatEvent)) { e.mu.Lock(); e.statf = f; e.mu.Unlock() }
+
+func (e *Engine) stat(kind string, ctx *Context, from, to string, l keymap.Lang) {
+	if e.statf != nil {
+		e.statf(StatEvent{Kind: kind, App: ctx.App, From: from, To: to, Lang: l})
+	}
+}
 
 // Enabled — включена ли автоматика.
 func (e *Engine) Enabled() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.enabled }
@@ -389,6 +409,7 @@ func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 			act := Action{Kind: ActReplace, Backspaces: len(e.cur.keys), Text: keymap.RenderAll(keys, alt),
 				Keys: keys, Target: e.targetFor(r, alt), Reason: v.Reason, From: keymap.RenderAll(keys, e.cur.lang)}
 			e.applyRetro(token{keys: keys, lang: e.cur.lang}, alt, r, &act, c, ctx)
+			e.stat("layout", ctx, act.From, act.Text, e.cur.lang)
 			e.cur.keys, e.cur.lang, e.cur.corrected = keys, alt, true
 			e.last, e.fresh = c, true
 			return Result{Swallow: true, Actions: []Action{act}}
@@ -544,6 +565,20 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		e.pushHist(t)
 		return finish(Result{})
 	}
+	if r.Mode == "observe" {
+		// Только наблюдать: решаем как обычно, но ничего не меняем — для замера.
+		v := Decide(t.keys, t.lang, r, e.store, true, e.prevWordLang())
+		e.log("наблюдение", ctx, v)
+		if v.Switch {
+			to := v.Alt
+			if v.Text != "" {
+				to = v.Text
+			}
+			e.stat("would_layout", ctx, keymap.RenderAll(t.keys, t.lang), to, t.lang)
+			e.pushHist(t)
+			return finish(Result{})
+		}
+	}
 	if r.Mode != "auto" {
 		return finish(e.finishWord(t, vk, newLine, ctx))
 	}
@@ -563,6 +598,7 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 			t.mixed = true // на экране не то, что дают эти клавиши в одной раскладке
 		}
 		e.applyRetro(t, alt, r, &act, c, ctx)
+		e.stat("layout", ctx, act.From, act.Text, t.lang)
 		t.lang, t.corrected = alt, true
 		e.learnWord(&t, ctx)
 		e.pushHist(t)
@@ -694,6 +730,13 @@ func (e *Engine) undo(ctx *Context, byBackspace bool) Result {
 		e.store.Unlearn(c.learnedL, c.learned)
 	}
 	e.log("отмена", ctx, Verdict{CurLang: c.newLang, Cur: keymap.RenderAll(c.origKeys, c.newLang), Alt: text, Reason: "отмена"})
+	if c.auto {
+		kind := "undo_layout"
+		if c.newLang == c.origLang {
+			kind = "undo_typo"
+		}
+		e.stat(kind, ctx, text, keymap.RenderAll(c.origKeys, c.newLang), c.origLang)
+	}
 	return Result{Swallow: byBackspace, Actions: []Action{act}}
 }
 
@@ -780,6 +823,10 @@ func (e *Engine) convertWord(ctx *Context) Result {
 				}
 			}
 		}
+	}
+	if !t.corrected && !t.seeded {
+		// Слово, которое программа не исправила сама, — пропуск.
+		e.stat("manual", ctx, keymap.RenderAll(t.keys, from), act.Text, from)
 	}
 	t.lang, t.mixed, t.corrected = to, false, true
 	e.last, e.fresh = c, true

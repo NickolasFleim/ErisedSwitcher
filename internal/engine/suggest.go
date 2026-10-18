@@ -468,6 +468,12 @@ func (e *Engine) autocorrect(t *token, vk uint16, ctx *Context) (Action, *correc
 	d := predict.DecideAuto(low, cands, e.autoOptions(r, low, t.lang, tz))
 	e.log("опечатка", ctx, Verdict{CurLang: t.lang, Cur: low, Alt: d.Best.Word, Switch: d.OK, Reason: d.Reason,
 		AltZipf: float32(d.Best.Zipf), CurScore: d.Best.Dist})
+	if r.Mode == "observe" {
+		if d.OK {
+			e.stat("would_typo", ctx, keymap.RenderAll(t.keys, t.lang), d.Best.Word, t.lang)
+		}
+		return Action{}, nil, false
+	}
 	if !d.OK {
 		return Action{}, nil, false
 	}
@@ -476,6 +482,7 @@ func (e *Engine) autocorrect(t *token, vk uint16, ctx *Context) (Action, *correc
 	fixed := lead + predict.MatchCase(core, d.Best.Word) + trail
 	c := &correction{origKeys: t.keys, origLang: t.lang, newLang: t.lang, newLen: len([]rune(fixed)), trail: vk, auto: true, histIdx: len(e.hist)}
 	act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: fixed, Target: keymap.Unknown, Trail: []uint16{vk}, Reason: "исправлена опечатка", From: text}
+	e.stat("typo", ctx, text, fixed, t.lang)
 	var keys []keymap.Key
 	for _, rr := range fixed {
 		k, ok := keymap.KeyForRune(rr, t.lang)

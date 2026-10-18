@@ -50,6 +50,9 @@ type Host interface {
 	ImportSettings(b []byte) error
 	BackupNow() error
 	PickFolder() string
+	// Замер точности.
+	Stats() map[string]any
+	StatsAction(op string, id int64, verdict string) error
 }
 
 // Server — HTTP-сервер настроек.
@@ -87,6 +90,7 @@ func Start(host Host, port int) (*Server, error) {
 	mux.HandleFunc("/api/export", s.export)
 	mux.HandleFunc("/api/import", s.api(s.importSettings))
 	mux.HandleFunc("/api/backup", s.api(s.backup))
+	mux.HandleFunc("/api/stats", s.api(s.statsAPI))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go s.srv.Serve(ln)
 	return s, nil
@@ -364,4 +368,21 @@ func (s *Server) backup(r *http.Request) (any, error) {
 		return map[string]any{"dir": s.host.PickFolder()}, nil
 	}
 	return nil, constError("неизвестная операция")
+}
+
+func (s *Server) statsAPI(r *http.Request) (any, error) {
+	if r.Method == http.MethodPost {
+		var q struct {
+			Op      string `json:"op"` // mark | clear
+			ID      int64  `json:"id"`
+			Verdict string `json:"verdict"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			return nil, err
+		}
+		if err := s.host.StatsAction(q.Op, q.ID, q.Verdict); err != nil {
+			return nil, err
+		}
+	}
+	return s.host.Stats(), nil
 }

@@ -90,3 +90,17 @@ func (h *host) ExportSettings(bool) ([]byte, error) {
 func (h *host) ImportSettings([]byte) error { return nil }
 func (h *host) BackupNow() error            { return nil }
 func (h *host) PickFolder() string          { return `C:\Users\you\OneDrive\Erised` }
+
+func (h *host) Stats() map[string]any {
+	now := time.Now()
+	return map[string]any{
+		"week":  map[string]int{"layout": 143, "undo_layout": 3, "manual": 5, "typo": 61, "undo_typo": 4, "would_layout": 12, "would_typo": 7, "checked_ok": 9, "checked_wrong": 1},
+		"month": map[string]int{"layout": 612, "undo_layout": 11, "manual": 19, "typo": 240, "undo_typo": 15, "would_layout": 12, "would_typo": 7, "checked_ok": 9, "checked_wrong": 1},
+		"examples": []map[string]any{
+			{"id": 3, "time": now, "kind": "would_layout", "app": "telegram.exe", "from": "rjl", "to": "код", "lang": "en"},
+			{"id": 2, "time": now.Add(-time.Hour), "kind": "would_typo", "app": "chrome.exe", "from": "пртвет", "to": "привет", "lang": "ru", "verdict": "ok"},
+			{"id": 1, "time": now.Add(-2 * time.Hour), "kind": "undo_layout", "app": "windowsterminal.exe", "from": "vim", "to": "мшь", "lang": "en"},
+		},
+	}
+}
+func (h *host) StatsAction(string, int64, string) error { return nil }

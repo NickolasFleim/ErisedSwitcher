@@ -230,7 +230,7 @@ function toast(msg, err) {
 // ---------- Описание параметров ----------
 const RULE_FIELDS = [
   { g: "Когда исправлять" },
-  { k: "mode", t: "select", l: "Режим", h: "Автоматически, только по горячим клавишам или не трогать вовсе.", o: [["auto", "Автоматически"], ["manual", "Только вручную"], ["off", "Выключено"]] },
+  { k: "mode", t: "select", l: "Режим", h: "Автоматически, только по горячим клавишам или не трогать вовсе.", o: [["auto", "Автоматически"], ["manual", "Только вручную"], ["observe", "Только наблюдать (замер)"], ["off", "Выключено"]] },
   { k: "correct_on_space", t: "bool", l: "Проверять слово после пробела" },
   { k: "correct_on_enter", t: "bool", l: "Проверять слово перед Enter", h: "В терминале исправление произойдёт до выполнения команды." },
   { k: "correct_on_tab", t: "bool", l: "Проверять слово перед Tab", h: "Обычно выключено: в терминале Tab — автодополнение." },
@@ -310,7 +310,7 @@ const TABS = [
   ["dict", "Словарь", "Свои слова, исключения"],
   ["learned", "Собранные слова", "Автоматический сбор"],
   ["probe", "Проверка", "Что будет со словом"],
-  ["log", "Журнал", "Почему сработало"],
+  ["log", "Журнал", "Точность, решения"],
 ];
 
 // ---------- Состояние ----------
@@ -920,6 +920,63 @@ function copyText(text) {
   document.execCommand("copy"); ta.remove(); return Promise.resolve();
 }
 
+// ---------- Замер точности ----------
+const STAT_KIND = {
+  undo_layout: "вы отменили исправление раскладки", undo_typo: "вы отменили исправление опечатки",
+  manual: "пропуск: вы сконвертировали сами", would_layout: "исправила бы раскладку", would_typo: "исправила бы опечатку",
+};
+function pct(a, b) { return b > 0 ? Math.round(100 * a / b) + "%" : "—"; }
+function renderAccuracy() {
+  const box = el("div", {});
+  const orig = JSON.parse(saved);
+  const observeRow = el("div", { class: "row" },
+    el("div", {}, el("label", { for: "acc-observe" }, "Только наблюдать — ничего не исправлять"),
+      el("div", { class: "help" }, "Программа решает как обычно, но текст не меняет, а записывает, что исправила бы. Через несколько дней разберите список ниже: «Ошибка» сделает слово исключением. Потом выключите режим. Для отдельных программ — режим «Только наблюдать» в их правиле.")),
+    el("input", { type: "checkbox", id: "acc-observe", checked: cfg.defaults.mode === "observe", onchange: e => {
+      cfg.defaults.mode = e.target.checked ? "observe" : "auto"; markDirty();
+      observeRow.classList.toggle("changed", cfg.defaults.mode !== orig.defaults.mode);
+    } }));
+  const draw = (st) => {
+    const w = st.week || {}, m = st.month || {};
+    const row = (label, f, help) => el("tr", {}, el("td", {}, label, help ? el("div", { class: "help" }, help) : null), el("td", {}, f(w)), el("td", {}, f(m)));
+    const kept = c => (c.layout || 0) - (c.undo_layout || 0);
+    const ex = st.examples || [];
+    const observing = (c) => (c.would_layout || 0) + (c.would_typo || 0) > 0;
+    box.replaceChildren(...[
+      el("table", {}, el("thead", {}, el("tr", {}, el("th", {}), el("th", {}, "7 дней"), el("th", {}, "30 дней"))),
+        el("tbody", {},
+          row("Исправлено раскладок", c => String(c.layout || 0)),
+          row("из них вы отменили", c => `${c.undo_layout || 0} · точность ${pct(kept(c), c.layout || 0)}`, "Отмена — Backspace сразу после исправления или повторное нажатие горячей клавиши."),
+          row("Пропущено", c => `${c.manual || 0} · найдено само ${pct(kept(c), kept(c) + (c.manual || 0))}`, "Слова, которые программа не исправила, а вы сконвертировали сами."),
+          row("Исправлено опечаток", c => String(c.typo || 0)),
+          row("из них вы отменили", c => `${c.undo_typo || 0} · точность ${pct((c.typo || 0) - (c.undo_typo || 0), c.typo || 0)}`),
+          observing(m) ? row("В режиме наблюдения исправила бы", c => `${(c.would_layout || 0) + (c.would_typo || 0)} · проверено ${(c.checked_ok || 0) + (c.checked_wrong || 0)}, из них верно ${pct(c.checked_ok || 0, (c.checked_ok || 0) + (c.checked_wrong || 0))}`) : null)),
+      ex.length ? el("div", {}, el("h3", {}, "Для разбора"),
+        el("table", {}, el("tbody", {}, ex.slice(0, 150).map(x => el("tr", {},
+          el("td", { class: "help" }, new Date(x.time).toLocaleString(), el("div", {}, x.app)),
+          el("td", { class: "word" }, x.from, " → ", el("b", {}, x.to), el("div", { class: "help" }, STAT_KIND[x.kind] || x.kind)),
+          el("td", {}, x.kind.startsWith("would_") ? el("div", { class: "actions" },
+            el("button", { class: "btn small" + (x.verdict === "ok" ? " primary" : ""), onclick: () => mark(x.id, "ok") }, "Верно"),
+            el("button", { class: "btn small" + (x.verdict === "wrong" ? " danger-fill" : " danger"), title: "Слово станет исключением", onclick: () => mark(x.id, "wrong") }, "Ошибка")) : null))))))
+        : el("p", { class: "empty" }, cfg.stats_examples || cfg.defaults.mode === "observe" ? "Примеров пока нет." : "Слова для разбора не записываются — включите галочку выше или режим наблюдения."),
+      el("div", { class: "actions", style: "padding:10px 0 14px" },
+        el("button", { class: "btn", onclick: () => load() }, "Обновить"),
+        el("button", { class: "btn danger", onclick: async () => { if (confirm("Стереть всю статистику и примеры?")) { try { draw(await api("/api/stats", { op: "clear" })); } catch (e) { toast(e.message, true); } } } }, "Сбросить статистику")),
+    ].filter(Boolean));
+  };
+  const mark = async (id, verdict) => {
+    try { draw(await api("/api/stats", { op: "mark", id, verdict })); if (verdict === "wrong") toast("Слово добавлено в исключения"); } catch (e) { toast(e.message, true); }
+  };
+  const load = () => api("/api/stats").then(draw).catch(e => box.replaceChildren(el("p", { class: "empty" }, e.message)));
+  load();
+  return el("div", { class: "group" },
+    el("h3", {}, "Точность на вашем наборе"),
+    el("p", { class: "help" }, "Счётчики ведутся всегда и хранятся только на этом компьютере, без текста."),
+    observeRow,
+    field({ t: "bool", l: "Записывать слова для разбора", h: "Отменённые исправления и пропуски — со словами и программой, последние 300. Без этой галочки — только счётчики." }, cfg, "stats_examples", { orig: orig.stats_examples, prefix: "acc" }),
+    box);
+}
+
 function renderDiagnostics() {
   const box = el("div", {});
   const draw = (d) => {
@@ -942,7 +999,8 @@ function renderDiagnostics() {
 
 async function renderLog(m) {
   m.append(el("h2", {}, "Журнал"),
-    el("p", { class: "lead" }, "Последние решения программы с объяснением. Хранится только в памяти, пока программа запущена."),
+    el("p", { class: "lead" }, "Насколько хорошо программа исправляет именно ваш текст, и последние её решения с объяснением."),
+    renderAccuracy(),
     renderDiagnostics());
   if (!S.config.log_decisions) m.append(el("p", { class: "note" }, "Журнал выключен. Включите его на вкладке «Общие» и сохраните."));
   const box = el("div", { class: "group log" });

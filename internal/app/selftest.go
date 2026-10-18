@@ -218,28 +218,30 @@ type selfTestHost struct {
 	pred *predict.Predictor
 }
 
-func (h selfTestHost) Config() *config.Config              { return h.cfg }
-func (h selfTestHost) ApplyConfig(*config.Config) error    { return nil }
-func (h selfTestHost) Words() *words.Store                 { return h.st }
-func (h selfTestHost) SaveWords() error                    { return nil }
-func (h selfTestHost) Status() map[string]any              { return map[string]any{"version": Version} }
-func (h selfTestHost) Log() []engine.LogEntry              { return nil }
-func (h selfTestHost) ClearLog()                           {}
-func (h selfTestHost) RecentApps() []string                { return nil }
-func (h selfTestHost) Action(string) error                 { return nil }
-func (h selfTestHost) Predictor() *predict.Predictor       { return h.pred }
-func (h selfTestHost) HistoryStats() predict.Stats         { return predict.Stats{} }
-func (h selfTestHost) HistoryClear() error                 { return nil }
-func (h selfTestHost) HistoryForget(_, _, _ string) error  { return nil }
-func (h selfTestHost) UpdateStatus() map[string]any        { return map[string]any{"current": Version} }
-func (h selfTestHost) UpdateAction(string) error           { return nil }
-func (h selfTestHost) Diagnostics() map[string]any         { return map[string]any{} }
-func (h selfTestHost) DiagnosticsAction(string) error      { return nil }
-func (h selfTestHost) InstallStatus() map[string]any       { return map[string]any{} }
-func (h selfTestHost) InstallAction(string) error          { return nil }
-func (h selfTestHost) ExportSettings(bool) ([]byte, error) { return nil, nil }
-func (h selfTestHost) ImportSettings([]byte) error         { return nil }
-func (h selfTestHost) BackupNow() error                    { return nil }
-func (h selfTestHost) PickFolder() string                  { return "" }
+func (h selfTestHost) Config() *config.Config                  { return h.cfg }
+func (h selfTestHost) ApplyConfig(*config.Config) error        { return nil }
+func (h selfTestHost) Words() *words.Store                     { return h.st }
+func (h selfTestHost) SaveWords() error                        { return nil }
+func (h selfTestHost) Status() map[string]any                  { return map[string]any{"version": Version} }
+func (h selfTestHost) Log() []engine.LogEntry                  { return nil }
+func (h selfTestHost) ClearLog()                               {}
+func (h selfTestHost) RecentApps() []string                    { return nil }
+func (h selfTestHost) Action(string) error                     { return nil }
+func (h selfTestHost) Predictor() *predict.Predictor           { return h.pred }
+func (h selfTestHost) HistoryStats() predict.Stats             { return predict.Stats{} }
+func (h selfTestHost) HistoryClear() error                     { return nil }
+func (h selfTestHost) HistoryForget(_, _, _ string) error      { return nil }
+func (h selfTestHost) UpdateStatus() map[string]any            { return map[string]any{"current": Version} }
+func (h selfTestHost) UpdateAction(string) error               { return nil }
+func (h selfTestHost) Diagnostics() map[string]any             { return map[string]any{} }
+func (h selfTestHost) DiagnosticsAction(string) error          { return nil }
+func (h selfTestHost) InstallStatus() map[string]any           { return map[string]any{} }
+func (h selfTestHost) InstallAction(string) error              { return nil }
+func (h selfTestHost) ExportSettings(bool) ([]byte, error)     { return nil, nil }
+func (h selfTestHost) ImportSettings([]byte) error             { return nil }
+func (h selfTestHost) BackupNow() error                        { return nil }
+func (h selfTestHost) PickFolder() string                      { return "" }
+func (h selfTestHost) Stats() map[string]any                   { return map[string]any{} }
+func (h selfTestHost) StatsAction(string, int64, string) error { return nil }
 
 var _ webui.Host = selfTestHost{}

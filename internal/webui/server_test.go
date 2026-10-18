@@ -121,3 +121,6 @@ func (f *fakeHost) ExportSettings(bool) ([]byte, error) {
 func (f *fakeHost) ImportSettings([]byte) error { return nil }
 func (f *fakeHost) BackupNow() error            { return nil }
 func (f *fakeHost) PickFolder() string          { return "" }
+
+func (f *fakeHost) Stats() map[string]any                   { return map[string]any{} }
+func (f *fakeHost) StatsAction(string, int64, string) error { return nil }

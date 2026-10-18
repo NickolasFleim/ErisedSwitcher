@@ -66,7 +66,7 @@ While you type, a strip with options appears at the text cursor: word completion
 | Esc | Hide the strip |
 | Backspace right after a correction | Undo it (and stop correcting that word) |
 
-**Typo correction** knows the keyboard: hitting a neighbouring key, swapping two letters or missing a double letter are "cheap" mistakes. A fix is applied on Space or Enter only when the program is confident: on synthetic typos about 75% are fixed automatically with about 2% wrong fixes; in other cases the right word is simply first in the strip (correct first option 88–89% of the time). *Suggest only* mode never changes your text by itself.
+**Typo correction** knows the keyboard: hitting a neighbouring key, swapping two letters or missing a double letter are "cheap" mistakes. A fix is applied on Space or Enter only when the program is confident: on synthetic typos about 69% are fixed automatically with under 2% wrong fixes; in other cases the right word is simply first in the strip (correct first option 88–89% of the time). *Suggest only* mode never changes your text by itself.
 
 After every automatic correction a short flash near the cursor shows what changed — `пртвет → привет` — so you notice it and can undo it with Backspace. It can be turned off on the *General* tab.
 
@@ -111,6 +111,7 @@ If a command is corrected by mistake, undo with Backspace — it becomes an exce
 
 ## Tuning
 
+- **Accuracy on your own typing** (*Log* tab): how many corrections you undid (the program's mistakes) and how many words you converted by hand (misses), for the last 7 and 30 days — counters only, no text. *Observe only* mode makes the program decide as usual but change nothing, recording what it would have fixed; review the list and mark mistakes — those words become exceptions.
 - **Check** tab — type words and see what will happen to them and why, with the scores. You can name a program to test its rule.
 - **Log** tab — enable it on *General* and every decision is recorded with an explanation (in memory only, until exit).
 - **Too many corrections** — enable *Dictionary only*, raise *Short words: minimum frequency* or lower *Current variant no better than*.
@@ -145,7 +146,7 @@ If an error happens, the program keeps running, saves a report to `%APPDATA%\Eri
 ## How it works
 
 - A low-level keyboard hook (`WH_KEYBOARD_LL`) keeps the current word as a sequence of key presses with Shift/CapsLock, so the word can be "read" in any layout without asking the window.
-- Layout decisions: frequency dictionaries (~150k Russian, ~90k English, ~88k Ukrainian words) plus a letter trigram model for unknown words. About 99% of wrong-layout words among the 10,000 most frequent are caught; among 20,000 rare correctly typed words false switches are about 0.08%. Russian vs Ukrainian is decided by the dictionaries and letters unique to each (і ї є ґ / ы э ъ ё).
+- Layout decisions: frequency dictionaries (~150k Russian, ~90k English, ~88k Ukrainian words) plus a letter trigram model for unknown words. About 99% of wrong-layout words among the 10,000 most frequent are caught; among 20,000 rare correctly typed words false switches are about 0.08%. On real sentences (Universal Dependencies test sets: 1,500 Russian, 1,150 English) typed in the right layout, 0.23% of Russian and 0.05% of English words get changed (mostly rare words "fixed" as typos); typed entirely in the wrong layout, 99.7% of Russian and 99.8% of English words are restored. The benchmark is `ERISED_EVAL=<folder with .conllu> go test ./internal/engine -run TestEval -v`. Russian vs Ukrainian is decided by the dictionaries and letters unique to each (і ї є ґ / ы э ъ ё).
 - Typos: a compact similar-words index (SymSpell, ~25 MB in memory, built in the background within a second) and a weighted Damerau–Levenshtein distance that knows neighbouring keys; a Bloom filter with all word forms ever seen. Suggestions take about 0.15 ms per key press.
 - Correction: Backspaces, input via `SendInput` (Unicode or keys), layout switch via `WM_INPUTLANGCHANGEREQUEST`. Keys pressed during a correction are held and replayed afterwards, so fast typing isn't lost.
 - The selection is converted through the clipboard; its previous text content is restored afterwards.

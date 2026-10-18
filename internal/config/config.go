@@ -13,7 +13,8 @@ import (
 // Rule — параметры распознавания и ввода. В глобальных настройках заданы все поля,
 // в правиле приложения — только те, что нужно переопределить (остальные null).
 type Rule struct {
-	// "auto" — исправлять автоматически; "manual" — только по горячим клавишам; "off" — не трогать.
+	// "auto" — исправлять автоматически; "manual" — только по горячим клавишам; "off" — не трогать;
+	// "observe" — только наблюдать: решать как в "auto", но ничего не менять (замер точности).
 	Mode *string `json:"mode,omitempty"`
 
 	// Минимальная длина слова (в буквах) для автоисправления по словарю.
@@ -245,6 +246,8 @@ type Config struct {
 	// Экспериментально: после щелчка мышью читать текст перед курсором ввода
 	// (специальные возможности Windows), чтобы двойной Shift конвертировал уже написанное.
 	ReadContext bool `json:"read_context"`
+	// Записывать слова отменённых исправлений и пропусков для разбора на вкладке «Журнал».
+	StatsExamples bool `json:"stats_examples"`
 
 	Suggest Suggest `json:"suggest"`
 	Update  Update  `json:"update"`
@@ -601,7 +604,7 @@ func (c *Config) Validate() []string {
 			errs = append(errs, msg)
 		}
 	}
-	modes := map[string]bool{"auto": true, "manual": true, "off": true}
+	modes := map[string]bool{"auto": true, "manual": true, "off": true, "observe": true}
 	injects := map[string]bool{"unicode": true, "keys": true}
 	sources := map[string]bool{"auto": true, "focus": true, "console": true, "tracked": true}
 	checkRule := func(name string, r *Rule) {
