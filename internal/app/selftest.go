@@ -134,6 +134,16 @@ func SelfTest(reportPath string) int {
 	}
 	p.Hide()
 
+	// 3а. Чтение текста у курсора (специальные возможности): должно отвечать быстро и не падать.
+	t1 := time.Now()
+	if _, ok := win.ReadCaretText(time.Second); ok {
+		check("чтение текста у курсора", nil)
+	} else if time.Since(t1) >= time.Second {
+		check("чтение текста у курсора", fmt.Errorf("нет ответа за секунду"))
+	} else {
+		fmt.Fprintf(&out, "skip  чтение текста у курсора: нет поля ввода с фокусом\n")
+	}
+
 	// 4. Сервер настроек.
 	srv, err := webui.Start(selfTestHost{cfg: cfg, st: st, pred: pred}, 0)
 	if err != nil {

@@ -240,6 +240,9 @@ type Config struct {
 
 	// Ненадолго показывать у курсора, что исправлено («пртвет → привет»).
 	FlashCorrections bool `json:"flash_corrections"`
+	// Экспериментально: после щелчка мышью читать текст перед курсором ввода
+	// (специальные возможности Windows), чтобы двойной Shift конвертировал уже написанное.
+	ReadContext bool `json:"read_context"`
 
 	Suggest Suggest `json:"suggest"`
 	Update  Update  `json:"update"`

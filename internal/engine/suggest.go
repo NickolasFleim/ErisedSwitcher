@@ -230,7 +230,7 @@ func splitWord(s string) (lead, core, trail string) {
 // canAutocorrect — можно ли трогать это слово (регистр, цифры, исключения).
 // typedZipf > 0 — слово есть в словаре, но может быть частой ошибкой написания.
 func (e *Engine) canAutocorrect(t *token, r *config.Effective) (typedCore string, typedZipf float64, ok bool) {
-	if e.pred == nil || r.Autocorrect == "off" || t.mixed || t.corrected || t.lang == keymap.Unknown || len(t.keys) == 0 {
+	if e.pred == nil || r.Autocorrect == "off" || t.mixed || t.corrected || t.seeded || t.lang == keymap.Unknown || len(t.keys) == 0 {
 		return "", 0, false
 	}
 	for _, k := range t.keys {

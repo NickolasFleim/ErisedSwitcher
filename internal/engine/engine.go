@@ -101,6 +101,7 @@ type token struct {
 	trail     uint16 // клавиша-разделитель после слова (0 — нет)
 	corrected bool   // слово уже исправлено автоматически
 	mixed     bool   // раскладка менялась посреди слова
+	seeded    bool   // слово прочитано из окна (было там до щелчка) — само не исправляется
 }
 
 type correction struct {
@@ -151,6 +152,7 @@ type Engine struct {
 	// Раскладка, на которую мы переключили сами (пока система не подтвердила).
 	forced     keymap.Lang
 	forcedTime time.Time
+	epoch      uint64 // меняется при каждом сбросе буфера (для чтения текста у курсора)
 	now        func() time.Time
 }
 
@@ -217,6 +219,7 @@ func (e *Engine) trackSelection(ev KeyEvent) {
 }
 
 func (e *Engine) resetAll() {
+	e.epoch++
 	e.cur = token{lang: keymap.Unknown}
 	e.hist = nil
 	e.last = nil
@@ -369,7 +372,7 @@ func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 	if e.last != nil && e.last.histIdx != -1 {
 		e.last = nil
 	}
-	if r.Mode == "auto" && r.EarlySwitch && !e.cur.corrected && !e.cur.mixed &&
+	if r.Mode == "auto" && r.EarlySwitch && !e.cur.corrected && !e.cur.mixed && !e.cur.seeded &&
 		e.cur.lang != keymap.Unknown && len(e.cur.keys)+1 >= r.EarlyMinLen {
 		keys := append(append([]keymap.Key(nil), e.cur.keys...), k)
 		v := Decide(keys, e.cur.lang, r, e.store, false, keymap.Unknown)
@@ -514,7 +517,7 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		return finish(Result{})
 	}
 	t.trail = vk
-	if !check || t.mixed || t.corrected || t.lang == keymap.Unknown {
+	if !check || t.mixed || t.corrected || t.seeded || t.lang == keymap.Unknown {
 		e.learnWord(&t, ctx)
 		e.pushHist(t)
 		return finish(Result{})

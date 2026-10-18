@@ -112,6 +112,7 @@ type App struct {
 	comboMods    int    // для отслеживания Alt+Shift / Ctrl+Shift (режим «tracked»)
 	mouseDownPt  win.POINT
 	mouseDownT   uint32
+	clickSimple  bool // последний щелчок — простой (не двойной и не с Shift)
 
 	// Подсказки.
 	hist        *predict.History
@@ -484,12 +485,36 @@ func (a *App) onMouse(msg uint32, pt win.POINT, t uint32) {
 		double := t-a.mouseDownT <= win.DoubleClickTime() && near(pt, a.mouseDownPt, 4)
 		a.mouseDownPt, a.mouseDownT = pt, t
 		a.eng.NoteSelection(double || a.mods.Shift())
+		a.clickSimple = !double && !a.mods.Shift()
 	case win.WM_LBUTTONUP:
 		if !near(pt, a.mouseDownPt, 4) {
 			a.eng.NoteSelection(true)
+		} else if a.clickSimple && a.cfg.Load().ReadContext {
+			go win.Protect("текст у курсора", func() { a.readContext(a.eng.Epoch()) })
 		}
 	default:
 		a.eng.Reset()
+	}
+}
+
+// readContext — после щелчка мышью прочитать текст перед курсором ввода, чтобы двойной Shift
+// конвертировал уже написанное слово или фразу (экспериментально).
+func (a *App) readContext(epoch uint64) {
+	time.Sleep(60 * time.Millisecond) // курсор ввода переезжает не сразу
+	info := win.Describe(false)
+	cfg := a.cfg.Load()
+	if info.Hwnd == 0 || (info.Password && cfg.SkipPasswords) || !a.eng.Enabled() {
+		return
+	}
+	if rule := cfg.Resolve(info.Process, info.Class, info.Title); rule.Mode == "off" {
+		return
+	}
+	ct, ok := win.ReadCaretText(300 * time.Millisecond)
+	if !ok {
+		return
+	}
+	if a.eng.SeedContext(epoch, info.Hwnd, ct.Before, ct.AfterWord) && cfg.LogDecisions {
+		log.Printf("прочитан текст у курсора в %s", info.Process)
 	}
 }
 
