@@ -1,0 +1,53 @@
+# Выпуск: при push тега vX.Y.Z собирает программу и публикует релиз на GitHub.
+# Программа сама находит релизы и обновляется (файлы ErisedSwitcher*.exe + checksums.txt).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Проверки
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./...
+          go test ./...
+
+      - name: Сборка
+        run: |
+          mkdir dist
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/ErisedSwitcher.exe ./cmd/erised
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/ErisedSwitcher-arm64.exe ./cmd/erised
+          cd dist && sha256sum ErisedSwitcher.exe ErisedSwitcher-arm64.exe > checksums.txt && cat checksums.txt
+
+      - name: Заметки к выпуску
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## " v) == 1 { f = 1; next } /^## / && f { exit } f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Erised Switcher $v" > notes.md
+          cat notes.md
+
+      - name: Публикация
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "Erised Switcher ${GITHUB_REF_NAME#v}" --notes-file notes.md $pre
+          fi

@@ -1,0 +1,28 @@
+# Проверка каждого коммита и pull request: тесты и сборка под Windows.
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go vet ./...
+      - run: GOOS=windows go vet ./...
+      - run: go test ./...
+      - name: Сборка
+        run: |
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher.exe ./cmd/erised
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher-arm64.exe ./cmd/erised
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ErisedSwitcher-${{ github.sha }}
+          path: ErisedSwitcher*.exe

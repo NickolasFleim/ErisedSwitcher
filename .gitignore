@@ -1,0 +1,10 @@
+# Сборки
+*.exe
+*.exe~
+/dist/
+*.test
+# Временные файлы
+*.tmp
+*.part
+.DS_Store
+Thumbs.db

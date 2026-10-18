@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Erised Switcher — настройки</title>
+<style>
+:root {
+  --paper: #f3f4f7;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #5c667a;
+  --line: #d8dde6;
+  --cap: #ffffff;
+  --cap-edge: #c3cad6;
+  --en: #2563eb;
+  --ru: #dc2626;
+  --ok: #15803d;
+  --warn: #b45309;
+  --focus: #2563eb;
+  --gold: #9a7128;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #161a22; --panel: #1e232d; --ink: #e7eaf0; --muted: #9aa3b5; --line: #323947;
+    --cap: #272d39; --cap-edge: #11151c; --en: #6b9bff; --ru: #ff6b6b; --ok: #4ade80; --warn: #fbbf24; --focus: #6b9bff; --gold: #d4a64a;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); }
+body { font: 15px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+nav { padding: 24px 16px; border-right: 1px solid var(--line); position: sticky; top: 0; height: 100vh; overflow: auto; }
+/* Название с отражением — как в зеркале */
+.brand { display: flex; align-items: flex-start; gap: 10px; margin: 0 4px 14px; }
+.brand svg { flex: none; margin-top: 1px; }
+.wordmark { position: relative; }
+.brand h1, .brand .reflection { font: 600 20px/1.1 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0; letter-spacing: -0.01em; white-space: nowrap; }
+.brand h1 span, .brand .reflection span { font-weight: 400; color: var(--muted); }
+.brand .reflection {
+  transform: scaleY(-1); opacity: .32; margin-top: -2px; user-select: none; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 95%); mask-image: linear-gradient(to top, #000 10%, transparent 95%);
+}
+.inscription { margin: 22px 4px 0; font: italic 13px/1.4 Georgia, "Times New Roman", serif; color: var(--gold); opacity: .8; cursor: help; }
+
+/* Вкладки — как клавиши */
+.tabs { display: flex; flex-direction: column; gap: 8px; }
+.tab {
+  text-align: left; padding: 9px 12px; border-radius: 8px; cursor: pointer;
+  background: var(--cap); border: 1px solid var(--line); border-bottom: 3px solid var(--cap-edge);
+  transition: transform .06s, border-bottom-width .06s;
+}
+.tab:hover { border-color: var(--cap-edge); }
+.tab:active { transform: translateY(2px); border-bottom-width: 1px; }
+.tab[aria-selected="true"] { transform: translateY(2px); border-bottom-width: 1px; border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.tab small { display: block; color: var(--muted); font-size: 12px; }
+
+.status { margin: 24px 4px 0; font-size: 13px; color: var(--muted); }
+.status b { color: var(--ink); font-weight: 600; }
+
+main { padding: 28px 40px 120px; max-width: 980px; }
+main h2 { font: 600 24px/1.25 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 0 0 6px; letter-spacing: -0.01em; }
+.lead { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+section[hidden] { display: none; }
+
+.group { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px; margin-bottom: 20px; }
+.group h3 { font-size: 15px; font-weight: 600; margin: 16px 0 4px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.group > .row:first-child, .group > h3 + .row { border-top: 0; }
+.row label { font-weight: 500; }
+.row .help { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.row.wide { grid-template-columns: 1fr; }
+.row.changed label::after { content: "изменено"; margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--warn); }
+
+input[type=text], input[type=number], select, textarea {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper);
+}
+textarea { min-height: 110px; resize: vertical; font-family: var(--mono); font-size: 13px; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--en); }
+.inherit { color: var(--muted); font-style: italic; }
+
+.btn { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); border-bottom: 2px solid var(--cap-edge); background: var(--cap); cursor: pointer; }
+.btn:active { transform: translateY(1px); border-bottom-width: 1px; }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.danger { color: var(--ru); }
+.btn.small { padding: 3px 9px; font-size: 13px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.savebar {
+  position: fixed; left: 232px; right: 0; bottom: 0; padding: 12px 40px; display: flex; gap: 12px; align-items: center;
+  background: var(--panel); border-top: 1px solid var(--line); transform: translateY(100%); transition: transform .18s;
+}
+.savebar.show { transform: none; }
+.savebar .msg { color: var(--muted); }
+.toast { position: fixed; right: 24px; top: 20px; padding: 10px 16px; border-radius: 8px; background: var(--ink); color: var(--paper); max-width: 460px; white-space: pre-line; display: none; z-index: 9; }
+.toast.err { background: var(--ru); color: #fff; }
+
+/* Правила приложений */
+.rule { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin-bottom: 14px; }
+.rule > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; gap: 12px; align-items: center; }
+.rule > summary::-webkit-details-marker { display: none; }
+.rule > summary .name { font-weight: 600; }
+.rule > summary .procs { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.rule .body { padding: 0 18px 12px; }
+.pill { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.off { color: var(--ru); border-color: var(--ru); }
+
+/* Таблицы слов */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 13px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.word { font-family: var(--mono); }
+td .btn { margin-right: 4px; }
+.lang { display: inline-block; min-width: 26px; text-align: center; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 4px; }
+.lang.en { background: var(--en); } .lang.ru { background: var(--ru); }
+.filters { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.filters input, .filters select { max-width: 260px; }
+.empty { color: var(--muted); padding: 18px 0; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Проверка: слова-клавиши */
+.probe textarea { min-height: 80px; font-family: inherit; font-size: 16px; }
+.caps { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.cap {
+  min-width: 120px; padding: 10px 12px 8px; border-radius: 10px; background: var(--cap);
+  border: 1px solid var(--line); border-bottom: 4px solid var(--cap-edge); position: relative;
+}
+.cap .from { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.cap .to { font-size: 18px; font-weight: 600; }
+.cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); }
+.cap .why { font-size: 12px; color: var(--muted); max-width: 240px; margin-top: 4px; }
+.cap .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.log td { font-size: 13px; }
+.kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--cap); }
+.recording { box-shadow: 0 0 0 2px var(--ru) inset; }
+.hk { display: flex; gap: 6px; }
+.note { border-left: 3px solid var(--warn); padding: 6px 12px; color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .tabs { flex-direction: row; flex-wrap: wrap; }
+  .tab small { display: none; }
+  main { padding: 20px 16px 120px; }
+  .row { grid-template-columns: 1fr; }
+  .cols { grid-template-columns: 1fr; }
+  .savebar { left: 0; padding: 12px 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav>
+    <div class="brand">
+      <svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true">
+        <path d="M2 28V11a10 10 0 0 1 20 0v17z" fill="var(--gold)"/>
+        <path d="M4.5 26V11a7.5 7.5 0 0 1 15 0v15z" fill="#1f2f57"/>
+        <path d="M7 15l7-7" stroke="#d6e4f5" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div class="wordmark"><h1>Erised <span>Switcher</span></h1><div class="reflection" aria-hidden="true">Erised <span>Switcher</span></div></div>
+    </div>
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="status" id="status"></div>
+    <p class="inscription" title="Надпись на раме зеркала. Прочтите её задом наперёд: зеркало показывает не лицо, а желание сердца. А переключатель — не то, что вы набрали, а то, что хотели написать.">Erised stra ehru oyt ube cafru oyt on wohsi</p>
+  </nav>
+  <main id="main"></main>
+</div>
+<div class="savebar" id="savebar"><button class="btn primary" id="save">Сохранить</button><button class="btn" id="revert">Отменить изменения</button><span class="msg" id="savemsg">Есть несохранённые изменения</span></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+const token = new URLSearchParams(location.search).get("t") || "";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "html") e.innerHTML = v;
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+};
+async function api(path, body) {
+  const opt = { headers: { "X-Token": token } };
+  if (body !== undefined) { opt.method = "POST"; opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: "Нет ответа от программы. Она запущена?" }));
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, err) {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", err ? 9000 : 2800);
+}
+
+// ---------- Описание параметров ----------
+const RULE_FIELDS = [
+  { g: "Когда исправлять" },
+  { k: "mode", t: "select", l: "Режим", h: "Автоматически, только по горячим клавишам или не трогать вовсе.", o: [["auto", "Автоматически"], ["manual", "Только вручную"], ["off", "Выключено"]] },
+  { k: "correct_on_space", t: "bool", l: "Проверять слово после пробела" },
+  { k: "correct_on_enter", t: "bool", l: "Проверять слово перед Enter", h: "В терминале исправление произойдёт до выполнения команды." },
+  { k: "correct_on_tab", t: "bool", l: "Проверять слово перед Tab", h: "Обычно выключено: в терминале Tab — автодополнение." },
+  { k: "early_switch", t: "bool", l: "Переключать посреди слова", h: "Если начало слова невозможно в текущей раскладке, исправлять не дожидаясь пробела." },
+  { k: "early_min_len", t: "int", l: "Посреди слова — не раньше чем после N букв" },
+  { k: "skip_first_word", t: "bool", l: "Не трогать первое слово строки", h: "Полезно, если первое слово — команда." },
+  { g: "Уверенность" },
+  { k: "min_len", t: "int", l: "Минимальная длина слова", h: "Слова короче не исправляются (кроме однобуквенных по контексту)." },
+  { k: "dictionary_only", t: "bool", l: "Только по словарю", h: "Исправлять, только если второй вариант — известное слово. Надёжнее, но реже." },
+  { k: "short_word_min_zipf", t: "float", l: "Короткие слова: минимальная частотность", h: "Для слов из 2–3 букв. Шкала 1–7: 7 — «не», «the»; 3 — редкое слово. Больше — осторожнее." },
+  { k: "short_word_cur_max", t: "float", l: "Короткие слова: насколько странно должен выглядеть текущий вариант", h: "Оценка букв от −5 (невозможно) до 0. Меньше — осторожнее." },
+  { k: "dict_cur_max", t: "float", l: "Словарные слова: насколько странно должен выглядеть текущий вариант", h: "Для слов от 4 букв, если второй вариант есть в словаре, но редкий." },
+  { k: "single_letter_context", t: "bool", l: "Исправлять однобуквенные слова по контексту", h: "z → я, если предыдущее слово фразы русское." },
+  { g: "Незнакомые слова (статистика букв)" },
+  { k: "ngram_min_len", t: "int", l: "Минимальная длина", h: "Слова, которых нет в словаре, исправляются по сочетаниям букв, начиная с этой длины." },
+  { k: "ngram_cur_max", t: "float", l: "Текущий вариант не лучше чем", h: "Обычные слова набирают от −1,4 до −0,8; набранные не в той раскладке — от −3,5 до −1,8." },
+  { k: "ngram_alt_min", t: "float", l: "Второй вариант не хуже чем" },
+  { k: "ngram_margin", t: "float", l: "Разница не меньше", h: "Насколько второй вариант должен быть вероятнее текущего." },
+  { g: "Что не трогать" },
+  { k: "skip_with_digits", t: "bool", l: "Слова с цифрами" },
+  { k: "skip_chars", t: "text", l: "Слова с этими символами внутри", h: "Как слово видно на экране. Не добавляйте . , ; ' [ ] ` — в русской раскладке это буквы." },
+  { k: "prefer_words", t: "textarea", l: "Слова, которые здесь всегда правильные", h: "Через пробел. Набранные не в той раскладке, исправляются всегда (например, команды: git cd ls)." },
+  { g: "Ввод и раскладка" },
+  { k: "undo_by_backspace", t: "bool", l: "Backspace сразу после исправления отменяет его", h: "Отменённое слово попадает в исключения (см. «Собранные слова»)." },
+  { k: "switch_layout", t: "bool", l: "Переключать раскладку после исправления" },
+  { k: "inject", t: "select", l: "Как печатать исправление", h: "Символы — работает везде, в т.ч. в терминалах. Клавиши — повтор нажатий после переключения раскладки, для программ, которые не принимают символы.", o: [["unicode", "Символами (Unicode)"], ["keys", "Клавишами"]] },
+  { k: "layout_source", t: "select", l: "Как узнавать текущую раскладку", h: "«Консоль» — через API консоли (для старых окон cmd/PowerShell). «Сам» — помнить, на что переключали.", o: [["auto", "Автоматически"], ["focus", "По окну с фокусом"], ["console", "Через API консоли"], ["tracked", "Запоминать самому"]] },
+  { k: "backspace_delay_ms", t: "int", l: "Пауза между Backspace, мс", h: "Увеличьте, если в программе стирается не всё." },
+  { k: "key_delay_ms", t: "int", l: "Пауза между символами, мс" },
+  { k: "switch_delay_ms", t: "int", l: "Пауза после переключения раскладки, мс" },
+  { g: "Выделенный текст и сбор слов" },
+  { k: "selection_allowed", t: "bool", l: "Разрешить конвертацию выделения" },
+  { k: "copy_combo", t: "text", l: "Чем копировать выделение", h: "Например Ctrl+C, а в Windows Terminal — Ctrl+Shift+C." },
+  { k: "reselect_after_convert", t: "bool", l: "Выделять текст после конвертации", h: "Тогда повторное нажатие вернёт текст как было." },
+  { k: "learn_passive", t: "bool", l: "Собирать незнакомые слова, которые вы не исправляете" },
+];
+
+const HOTKEYS = [
+  ["convert_word", "Сконвертировать последнее слово", "Если текст выделен (мышью, Shift+стрелками или Ctrl+A) — конвертирует выделение. Повторное нажатие возвращает как было. Если нет ни слова, ни выделения — переключает раскладку."],
+  ["convert_phrase", "Сконвертировать фразу", "Всё, что набрано с начала строки (до Enter, щелчка мышью или стрелок)."],
+  ["convert_selection", "Сконвертировать выделенный текст", "Через буфер обмена; его содержимое потом восстанавливается. Можно назначить ту же клавишу, что и для слова."],
+  ["undo", "Отменить исправление", "Сразу после исправления возвращает как было, иначе конвертирует последнее слово."],
+  ["toggle_enabled", "Включить или выключить программу", ""],
+  ["toggle_app", "Включить или выключить для текущего приложения", "Добавляет или убирает правило «выключено» для активной программы."],
+  ["switch_layout", "Переключить раскладку", "Например CapsLock или RCtrl, если хотите переключать одной клавишей."],
+];
+const HK_SUGGEST = ["DoubleShift", "DoubleLShift", "DoubleRShift", "DoubleCtrl", "DoubleRCtrl", "RCtrl", "RShift", "Pause", "Shift+Pause", "Ctrl+Pause", "Ctrl+Shift+Pause", "Ctrl+Alt+Pause", "CapsLock", "ScrollLock", "F12"];
+
+const TABS = [
+  ["general", "Общие", "Запуск, раскладки"],
+  ["detect", "Распознавание", "Пороги и поведение"],
+  ["apps", "Приложения", "Свои правила"],
+  ["hotkeys", "Горячие клавиши", ""],
+  ["dict", "Словарь", "Свои слова, исключения"],
+  ["learned", "Собранные слова", "Автоматический сбор"],
+  ["probe", "Проверка", "Что будет со словом"],
+  ["log", "Журнал", "Почему сработало"],
+];
+
+// ---------- Состояние ----------
+let S = null;          // ответ /api/state
+let cfg = null;        // редактируемая копия настроек
+let saved = "";        // сохранённая версия (JSON) для сравнения
+let wordsDirty = false;
+let tab = location.hash.slice(1) || "general";
+
+function markDirty() {
+  const d = JSON.stringify(cfg) !== saved;
+  $("#savebar").classList.toggle("show", d);
+  // В окне программы: чтобы при закрытии спросить про несохранённое.
+  if (window.erisedSetDirty) window.erisedSetDirty(d);
+}
+
+async function load() {
+  S = await api("/api/state");
+  cfg = structuredClone(S.config);
+  saved = JSON.stringify(cfg);
+  renderStatus();
+  render();
+}
+
+function renderStatus() {
+  const st = S.status || {};
+  $("#status").replaceChildren(
+    el("div", {}, "Состояние: ", el("b", {}, st.enabled ? "включено" : "выключено")),
+    st.admin === false ? el("div", {}, "Без прав администратора: в окнах, запущенных от администратора, не работает.") : null,
+    el("div", {}, "Раскладки: ", el("b", {}, st.layouts || "—")),
+    el("div", {}, "Словари: ", el("b", {}, st.dict || "")),
+    el("div", {}, "Данные: ", el("span", { style: "word-break:break-all" }, st.data_dir || "")),
+    el("div", { class: "actions", style: "margin-top:10px" },
+      el("button", { class: "btn small", onclick: () => act(st.enabled ? "disable" : "enable") }, st.enabled ? "Выключить" : "Включить"),
+      el("button", { class: "btn small", onclick: () => act("open_dir") }, "Открыть папку"),
+      el("button", { class: "btn small", onclick: () => act("reload").then(load) }, "Перечитать файлы")),
+  );
+}
+async function act(name) {
+  try { const r = await api("/api/action", { name }); S.status = r.status; renderStatus(); } catch (e) { toast(e.message, true); }
+}
+
+function render() {
+  const tabs = $("#tabs"); tabs.replaceChildren();
+  for (const [id, name, sub] of TABS) {
+    tabs.append(el("button", { class: "tab", role: "tab", "aria-selected": String(id === tab), onclick: () => { tab = id; location.hash = id; render(); } },
+      name, sub ? el("small", {}, sub) : null));
+  }
+  const m = $("#main"); m.replaceChildren();
+  ({ general: renderGeneral, detect: renderDetect, apps: renderApps, hotkeys: renderHotkeys, dict: renderDict, learned: renderLearned, probe: renderProbe, log: renderLog })[tab](m);
+}
+
+// ---------- Поля ----------
+function field(def, obj, key, opts = {}) {
+  const inherit = opts.inherit;              // для правил приложения: значение null = как в общих
+  const base = opts.base;                    // значение из общих (для подсказки)
+  const val = obj[key];
+  const set = (v) => { obj[key] = v; markDirty(); row.classList.toggle("changed", JSON.stringify(v) !== JSON.stringify(opts.orig)); };
+  let input;
+  const baseText = base === undefined ? "" : (def.t === "bool" ? (base ? "да" : "нет") : def.o ? (def.o.find(o => o[0] === base) || [, base])[1] : String(base));
+  if (def.t === "bool") {
+    if (inherit) {
+      input = el("select", { onchange: e => set(e.target.value === "" ? null : e.target.value === "1") },
+        el("option", { value: "" }, `Как в общих (${baseText})`), el("option", { value: "1" }, "Да"), el("option", { value: "0" }, "Нет"));
+      input.value = val === null || val === undefined ? "" : val ? "1" : "0";
+    } else {
+      input = el("input", { type: "checkbox", onchange: e => set(e.target.checked) });
+      input.checked = !!val;
+    }
+  } else if (def.t === "select") {
+    input = el("select", { onchange: e => set(e.target.value === "" ? null : e.target.value) },
+      inherit ? el("option", { value: "" }, `Как в общих (${baseText})`) : null, def.o.map(([v, n]) => el("option", { value: v }, n)));
+    input.value = val ?? "";
+  } else if (def.t === "textarea") {
+    input = el("textarea", { placeholder: inherit ? `Как в общих${base ? ": " + String(base).slice(0, 60) + "…" : " (пусто)"}` : "", oninput: e => set(e.target.value === "" && inherit ? null : e.target.value) });
+    input.value = val ?? "";
+  } else {
+    const num = def.t === "int" || def.t === "float";
+    input = el("input", {
+      type: num ? "number" : "text", step: def.t === "float" ? "0.1" : "1", placeholder: inherit ? `Как в общих: ${baseText}` : "",
+      oninput: e => {
+        const s = e.target.value;
+        if (s === "") return set(inherit ? null : (num ? 0 : ""));
+        set(num ? (def.t === "int" ? parseInt(s, 10) : parseFloat(s)) : s);
+      }
+    });
+    input.value = val ?? "";
+  }
+  input.id = (opts.prefix || "f") + "-" + key;
+  const row = el("div", { class: "row" + (def.t === "textarea" ? " wide" : "") },
+    el("div", {}, el("label", { for: input.id }, def.l), def.h ? el("div", { class: "help" }, def.h) : null), input);
+  return row;
+}
+function ruleForm(obj, opts) {
+  const frag = [];
+  let grp = null;
+  for (const d of RULE_FIELDS) {
+    if (d.g) { grp = el("div", { class: "group" }, el("h3", {}, d.g)); frag.push(grp); continue; }
+    grp.append(field(d, obj, d.k, { ...opts, base: opts.baseObj ? opts.baseObj[d.k] : undefined, orig: opts.origObj ? opts.origObj[d.k] : obj[d.k] }));
+  }
+  return frag;
+}
+
+// ---------- Вкладки ----------
+function renderGeneral(m) {
+  const g = (k, t, l, h, o) => field({ k, t, l, h, o }, cfg, k, { orig: JSON.parse(saved)[k] });
+  m.append(el("h2", {}, "Общие"),
+    el("p", { class: "lead" }, "Erised Switcher следит за нажатыми клавишами, а не за текстом в окне, поэтому работает и в терминалах. Здесь — то, что относится ко всей программе."),
+    el("div", { class: "group" },
+      g("enabled", "bool", "Программа включена", "Горячие клавиши работают и в выключенном состоянии."),
+      g("autostart", "bool", "Запускать вместе с Windows"),
+      g("skip_passwords", "bool", "Не трогать поля пароля", "Там, где Windows сообщает, что поле — для пароля."),
+      g("process_injected", "bool", "Обрабатывать нажатия от других программ", "Например, от AutoHotkey или экранной клавиатуры."),
+      g("double_tap_ms", "int", "Двойное нажатие: окно, мс", "Сколько может пройти между нажатиями для DoubleShift.")),
+    el("div", { class: "group" },
+      el("h3", {}, "Раскладки"),
+      g("layout_ru", "text", "Русская раскладка", "Пусто — найти автоматически. Можно указать код, например 00000419."),
+      g("layout_en", "text", "Английская раскладка", "Например 00000409 (США) или 00000809 (Великобритания).")),
+    el("div", { class: "group" },
+      el("h3", {}, "Значок и журнал"),
+      g("tray_shows_layout", "bool", "Показывать текущую раскладку на значке"),
+      g("log_decisions", "bool", "Вести журнал решений", "Только в памяти, до выхода из программы. Показывает набранные слова, поэтому выключен по умолчанию."),
+      g("log_size", "int", "Записей в журнале"),
+      g("ui_mode", "select", "Где открывать настройки", "Отдельное окно работает через WebView2 (есть в Windows 10 и 11). Если его нет, окно откроется через Edge.", [["window", "В отдельном окне"], ["browser", "В браузере"]]),
+      g("ui_port", "int", "Порт окна настроек", "0 — любой свободный. Меняется после перезапуска.")),
+    el("div", { class: "group" },
+      el("h3", {}, "Сбор слов"),
+      field({ t: "bool", l: "Собирать слова автоматически" }, cfg.learn, "enabled", { orig: JSON.parse(saved).learn.enabled }),
+      field({ t: "int", l: "В исключения после N отмен", h: "Сколько раз нужно отменить исправление слова (Backspace сразу после него)." }, cfg.learn, "exception_after", {}),
+      field({ t: "int", l: "В свои слова после N ручных конвертаций", h: "Слово, которое вы сами переводите двойным Shift, начнёт исправляться автоматически." }, cfg.learn, "word_after", {}),
+      field({ t: "int", l: "Незнакомое слово запоминать после N повторов", h: "Чтобы его больше не пытались «исправить»." }, cfg.learn, "passive_after", {}),
+      field({ t: "int", l: "Минимальная длина для запоминания" }, cfg.learn, "passive_min_len", {}),
+      field({ t: "bool", l: "Не добавлять сразу — ждать моей проверки", h: "Слова будут копиться в кандидатах, пока вы их не примете." }, cfg.learn, "review", {}),
+      field({ t: "int", l: "Предел числа кандидатов" }, cfg.learn, "max_candidates", {})),
+  );
+}
+
+function renderDetect(m) {
+  m.append(el("h2", {}, "Распознавание"),
+    el("p", { class: "lead" }, "Общие правила для всех программ. На вкладке «Приложения» их можно переопределить для отдельных программ. Проверить, как меняются решения, удобно на вкладке «Проверка»."),
+    ...ruleForm(cfg.defaults, { prefix: "d", origObj: JSON.parse(saved).defaults }),
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { cfg.defaults = structuredClone(S.defaults.defaults); markDirty(); render(); } }, "Вернуть значения по умолчанию")));
+}
+
+function renderApps(m) {
+  const appsList = el("datalist", { id: "recent-apps" }, (S.apps || []).map(a => el("option", { value: a })));
+  m.append(el("h2", {}, "Приложения"),
+    el("p", { class: "lead" }, "Правило срабатывает, когда активное окно принадлежит указанной программе. Если подходят несколько правил, побеждают более нижние. Пустые поля берутся из общих настроек."),
+    appsList);
+  const saveApps = JSON.parse(saved).apps || [];
+  cfg.apps.forEach((a, i) => {
+    const mode = a.mode ?? null;
+    const d = el("details", { class: "rule" },
+      el("summary", {},
+        el("input", { type: "checkbox", title: "Правило действует", checked: a.enabled, onclick: e => e.stopPropagation(), onchange: e => { a.enabled = e.target.checked; markDirty(); } }),
+        el("span", { class: "name" }, a.name || "Без названия"),
+        el("span", { class: "procs" }, a.process || a.class || a.title || "не указано, к чему относится"),
+        mode === "off" ? el("span", { class: "pill off" }, "выключено") : mode === "manual" ? el("span", { class: "pill" }, "вручную") : null),
+      el("div", { class: "body" },
+        el("div", { class: "group" },
+          field({ t: "text", l: "Название" }, a, "name", { prefix: "r" + i }),
+          field({ t: "text", l: "Программы", h: "Имена exe через «;». Можно со звёздочкой: *game*.exe. Начните вводить — подскажем недавние." }, a, "process", { prefix: "r" + i }),
+          field({ t: "text", l: "Класс окна (необязательно)", h: "Например ConsoleWindowClass для классической консоли." }, a, "class", { prefix: "r" + i }),
+          field({ t: "text", l: "Заголовок содержит (необязательно)" }, a, "title", { prefix: "r" + i })),
+        ...ruleForm(a, { inherit: true, prefix: "a" + i, baseObj: cfg.defaults, origObj: saveApps[i] || {} }),
+        el("div", { class: "actions" },
+          el("button", { class: "btn small", disabled: i === 0, onclick: () => { [cfg.apps[i - 1], cfg.apps[i]] = [cfg.apps[i], cfg.apps[i - 1]]; markDirty(); render(); } }, "Выше"),
+          el("button", { class: "btn small", disabled: i === cfg.apps.length - 1, onclick: () => { [cfg.apps[i + 1], cfg.apps[i]] = [cfg.apps[i], cfg.apps[i + 1]]; markDirty(); render(); } }, "Ниже"),
+          el("button", { class: "btn small danger", onclick: () => { if (confirm(`Удалить правило «${a.name}»?`)) { cfg.apps.splice(i, 1); markDirty(); render(); } } }, "Удалить правило"))));
+    const procInput = d.querySelector("#r" + i + "-process"); if (procInput) procInput.setAttribute("list", "recent-apps");
+    m.append(d);
+  });
+  m.append(el("div", { class: "actions" },
+    el("button", { class: "btn", onclick: () => { cfg.apps.push({ name: "Новое правило", enabled: true, process: "" }); markDirty(); render(); const all = document.querySelectorAll(".rule"); all[all.length - 1].open = true; } }, "Добавить правило"),
+    el("button", { class: "btn", onclick: () => { cfg.apps = structuredClone(S.defaults.apps); markDirty(); render(); } }, "Вернуть правила по умолчанию")));
+}
+
+function hotkeyString(e) {
+  const parts = [];
+  if (e.ctrlKey) parts.push("Ctrl"); if (e.altKey) parts.push("Alt"); if (e.shiftKey) parts.push("Shift"); if (e.metaKey) parts.push("Win");
+  const map = { Pause: "Pause", Cancel: "Pause", CapsLock: "CapsLock", ScrollLock: "ScrollLock", Insert: "Insert", Delete: "Delete", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown", Space: "Space", Tab: "Tab", Enter: "Enter", Escape: "Esc", Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", ContextMenu: "Apps", ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down" };
+  let key = null;
+  if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3);
+  else if (/^Digit\d$/.test(e.code)) key = e.code.slice(5);
+  else if (/^F\d+$/.test(e.code)) key = e.code;
+  else if (map[e.code]) key = map[e.code];
+  else if (map[e.key]) key = map[e.key];
+  if (!key) return null;
+  parts.push(key);
+  return parts.join("+");
+}
+
+function renderHotkeys(m) {
+  m.append(el("h2", {}, "Горячие клавиши"),
+    el("p", { class: "lead" }, "Нажмите «Записать» и сочетание клавиш, либо выберите из списка двойные нажатия: DoubleShift — дважды Shift, RCtrl — одиночное нажатие правого Ctrl. Пустое поле — выключено."),
+    el("datalist", { id: "hk-suggest" }, HK_SUGGEST.map(s => el("option", { value: s }))));
+  const g = el("div", { class: "group" });
+  const orig = JSON.parse(saved).hotkeys;
+  for (const [k, l, h] of HOTKEYS) {
+    const input = el("input", { type: "text", list: "hk-suggest", id: "hk-" + k, value: cfg.hotkeys[k] || "", placeholder: "выключено", oninput: e => { cfg.hotkeys[k] = e.target.value.trim(); markDirty(); } });
+    const rec = el("button", { class: "btn small", onclick: () => {
+      input.classList.add("recording"); input.value = ""; input.placeholder = "нажмите сочетание…"; input.focus();
+      const onKey = (e) => {
+        if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+        e.preventDefault(); const s = hotkeyString(e);
+        if (s) { input.value = s; cfg.hotkeys[k] = s; markDirty(); }
+        input.classList.remove("recording"); input.placeholder = "выключено"; input.removeEventListener("keydown", onKey);
+      };
+      input.addEventListener("keydown", onKey);
+    } }, "Записать");
+    g.append(el("div", { class: "row" + (cfg.hotkeys[k] !== orig[k] ? " changed" : "") },
+      el("div", {}, el("label", { for: input.id }, l), h ? el("div", { class: "help" }, h) : null),
+      el("div", { class: "hk" }, input, rec)));
+  }
+  m.append(g, el("p", { class: "note" }, "Сочетания с Pause: Windows передаёт Ctrl+Pause как отдельную клавишу, это учтено. Одиночные Shift, Ctrl и Alt без «L»/«R» нельзя — их слишком легко задеть."));
+}
+
+// ---------- Словарь ----------
+let W = null; // редактируемая копия слов
+function wordsState() { if (!W) W = structuredClone(S.words); return W; }
+async function saveWords(msg) {
+  try { const r = await api("/api/words", W); S.words = r.words; W = structuredClone(r.words); toast(msg || "Словарь сохранён"); render(); }
+  catch (e) { toast(e.message, true); }
+}
+function wordsArea(label, help, obj, lang) {
+  const id = "w-" + label + lang;
+  const ta = el("textarea", { id, oninput: e => { obj[lang] = e.target.value.split(/\s+/).filter(Boolean); } });
+  ta.value = (obj[lang] || []).join("\n");
+  return el("div", {}, el("label", { for: id }, el("span", { class: "lang " + lang }, lang.toUpperCase()), " ", label), el("div", { class: "help" }, help), ta);
+}
+function renderDict(m) {
+  const w = wordsState();
+  w.user ||= { ru: [], en: [] }; w.exceptions ||= { ru: [], en: [] }; w.autoreplace ||= []; w.ignored ||= { ru: [], en: [] };
+  m.append(el("h2", {}, "Словарь"),
+    el("p", { class: "lead" }, "По одному слову в строке. Повторы и регистр убираются при сохранении."),
+    el("div", { class: "group" }, el("h3", {}, "Свои слова"),
+      el("p", { class: "help" }, "Всегда считаются правильными в своём языке. Если такое слово набрано не в той раскладке — исправляется."),
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.user, "ru"), wordsArea("", "Английские", w.user, "en"))),
+    el("div", { class: "group" }, el("h3", {}, "Исключения"),
+      el("p", { class: "help" }, "Так написанное слово никогда не исправляется. Пишите так, как оно выглядит на экране: «ghbdtn» в английском столбце, если не хотите превращать его в «привет»."),
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Набрано в русской раскладке", w.exceptions, "ru"), wordsArea("", "Набрано в английской раскладке", w.exceptions, "en"))));
+  const tb = el("tbody");
+  const redraw = () => {
+    tb.replaceChildren(...w.autoreplace.map((r, i) => el("tr", {},
+      el("td", {}, el("input", { type: "text", value: r.from, "aria-label": "Что заменить", oninput: e => r.from = e.target.value })),
+      el("td", {}, el("input", { type: "text", value: r.to, "aria-label": "На что", oninput: e => r.to = e.target.value })),
+      el("td", {}, el("input", { type: "checkbox", checked: !!r.case, "aria-label": "Учитывать регистр", onchange: e => r.case = e.target.checked })),
+      el("td", {}, el("button", { class: "btn small danger", onclick: () => { w.autoreplace.splice(i, 1); redraw(); } }, "Удалить")))));
+    if (!w.autoreplace.length) tb.append(el("tr", {}, el("td", { colspan: 4, class: "empty" }, "Автозамен пока нет.")));
+  };
+  redraw();
+  m.append(el("div", { class: "group" }, el("h3", {}, "Автозамены"),
+    el("p", { class: "help" }, "Слово заменяется после пробела или Enter. Например: спс → спасибо."),
+    el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Что"), el("th", {}, "На что"), el("th", {}, "Регистр"), el("th", {}))), tb),
+    el("div", { class: "actions", style: "padding:12px 0" }, el("button", { class: "btn small", onclick: () => { w.autoreplace.push({ from: "", to: "" }); redraw(); } }, "Добавить автозамену"))),
+    el("div", { class: "group" }, el("h3", {}, "Не собирать"),
+      el("p", { class: "help" }, "Слова, которые вы удалили из собранных. Автоматический сбор их больше не добавит."),
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.ignored, "ru"), wordsArea("", "Английские", w.ignored, "en"))),
+    el("div", { class: "actions" }, el("button", { class: "btn primary", onclick: () => saveWords() }, "Сохранить словарь"),
+      el("button", { class: "btn", onclick: () => { W = null; render(); } }, "Отменить изменения")));
+}
+
+const KIND = { exception: "отменили исправление", manual: "сконвертировали вручную", passive: "набирали без исправления" };
+function renderLearned(m) {
+  const w = wordsState();
+  let q = "", kind = "";
+  m.append(el("h2", {}, "Собранные слова"),
+    el("p", { class: "lead" }, "Сюда программа сама складывает слова. Исключения — те, чьё исправление вы отменили. Свои слова — те, что вы переводили вручную или часто набирали. Одно слово хранится один раз, повторы только увеличивают счётчик."));
+  const filt = el("div", { class: "filters" },
+    el("input", { type: "text", placeholder: "Найти слово", "aria-label": "Найти слово", oninput: e => { q = e.target.value.toLowerCase(); draw(); } }),
+    (() => { const s = el("select", { "aria-label": "Откуда", onchange: e => { kind = e.target.value; draw(); } }, el("option", { value: "" }, "Все источники"), Object.entries(KIND).map(([k, v]) => el("option", { value: k }, "Вы " + v))); return s; })());
+  const learnedBox = el("div"), candBox = el("div");
+  m.append(filt, el("div", { class: "group" }, el("h3", {}, "Действуют"), learnedBox), el("div", { class: "group" }, el("h3", {}, "Кандидаты"),
+    el("p", { class: "help" }, "Ещё не набрали нужного числа повторов или ждут вашей проверки."), candBox));
+  const ignore = (e) => { (w.ignored[e.lang] ||= []).includes(e.w) || w.ignored[e.lang].push(e.w); };
+  const table = (list, isCand) => {
+    const rows = list.map((e, i) => ({ e, i })).filter(({ e }) => (!q || e.w.includes(q)) && (!kind || e.kind === kind));
+    if (!rows.length) return el("p", { class: "empty" }, list.length ? "Ничего не найдено." : isCand ? "Кандидатов нет." : "Пока ничего не собрано. Слова появятся, когда вы будете отменять исправления или конвертировать вручную.");
+    rows.sort((a, b) => b.e.n - a.e.n || String(b.e.last).localeCompare(String(a.e.last)));
+    return el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Слово"), el("th", {}, "Как"), el("th", {}, "Раз"), el("th", {}, "Где"), el("th", {}))),
+      el("tbody", {}, rows.slice(0, 500).map(({ e, i }) => el("tr", {},
+        el("td", { class: "word" }, el("span", { class: "lang " + e.lang }, e.lang.toUpperCase()), " ",
+          el("input", { type: "text", value: e.w, "aria-label": "Слово", style: "width:auto;min-width:10ch;display:inline-block", onchange: ev => { e.w = ev.target.value.trim().toLowerCase(); saveWords("Слово изменено"); } })),
+        el("td", {}, e.kind === "exception" ? "исключение" : "своё слово", el("div", { class: "help" }, "вы " + (KIND[e.kind] || ""))),
+        el("td", {}, String(e.n)),
+        el("td", { class: "help" }, (e.apps || []).join(", ")),
+        el("td", {},
+          isCand ? el("button", { class: "btn small", onclick: () => { w.candidates.splice(i, 1); w.learned.push(e); saveWords("Принято"); } }, "Принять") : null,
+          e.kind !== "exception" ? el("button", { class: "btn small", title: "Сделать исключением: никогда не исправлять", onclick: () => { e.kind = "exception"; saveWords("Перенесено в исключения"); } }, "В исключения")
+            : el("button", { class: "btn small", title: "Сделать своим словом", onclick: () => { e.kind = "manual"; saveWords("Перенесено в свои слова"); } }, "В свои слова"),
+          el("button", { class: "btn small danger", title: "Удалить и больше не собирать", onclick: () => { (isCand ? w.candidates : w.learned).splice(i, 1); ignore(e); saveWords("Удалено, больше не будет собираться"); } }, "Удалить"))))));
+  };
+  const draw = () => { learnedBox.replaceChildren(table(w.learned || [], false)); candBox.replaceChildren(table(w.candidates || [], true)); };
+  draw();
+}
+
+function renderProbe(m) {
+  const ta = el("textarea", { id: "probe", placeholder: "ghbdtn rfr ltkf  или  руддщ цщкдв" });
+  const app = el("input", { type: "text", list: "recent-apps2", placeholder: "например WindowsTerminal.exe", value: renderProbe.app || "" });
+  const out = el("div", { class: "caps", "aria-live": "polite" });
+  let t;
+  const run = () => {
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      renderProbe.text = ta.value; renderProbe.app = app.value;
+      if (!ta.value.trim()) { out.replaceChildren(el("p", { class: "empty" }, "Наберите слова — увидите, что с ними сделает программа.")); return; }
+      try {
+        // Проверяем с несохранёнными настройками: сначала временно не сохраняем — сервер берёт сохранённые.
+        const res = await api("/api/analyze", { text: ta.value, app: app.value });
+        out.replaceChildren(...res.map(r => {
+          const f = r.final;
+          if (r.error) return el("div", { class: "cap" }, el("div", { class: "from" }, r.word), el("div", { class: "why" }, r.error));
+          const target = r.typed_in === "en" ? "ru" : "en";
+          return el("div", { class: "cap" + (f.switch ? " sw-" + target : "") },
+            el("div", { class: "from" }, r.word + "  ·  " + r.typed_in.toUpperCase()),
+            el("div", { class: "to" }, f.switch ? f.alt : r.word),
+            el("div", { class: "why" }, (f.switch ? "Исправится: " : "Останется: ") + f.reason +
+              (r.early ? `. Посреди слова переключится после ${r.early_at}-й буквы` : "")),
+            el("div", { class: "nums" }, `буквы ${f.cur_score.toFixed(2)} → ${f.alt_score.toFixed(2)}, частота ${f.cur_zipf || "—"} → ${f.alt_zipf || "—"}`));
+        }));
+      } catch (e) { out.replaceChildren(el("p", { class: "empty" }, e.message)); }
+    }, 200);
+  };
+  ta.value = renderProbe.text || "";
+  ta.addEventListener("input", run); app.addEventListener("input", run);
+  m.append(el("h2", {}, "Проверка"),
+    el("p", { class: "lead" }, "Наберите текст как есть — программа покажет, что исправит и почему. Проверка идёт по сохранённым настройкам, так что после изменения порогов сначала сохраните."),
+    el("datalist", { id: "recent-apps2" }, (S.apps || []).map(a => el("option", { value: a }))),
+    el("div", { class: "group probe" },
+      el("div", { class: "row wide" }, el("label", { for: "probe" }, "Текст"), ta),
+      el("div", { class: "row" }, el("div", {}, el("label", {}, "Как будто в программе"), el("div", { class: "help" }, "Пусто — общие правила.")), app)),
+    out);
+  run();
+}
+
+async function renderLog(m) {
+  m.append(el("h2", {}, "Журнал"),
+    el("p", { class: "lead" }, "Последние решения программы с объяснением. Хранится только в памяти, пока программа запущена."));
+  if (!S.config.log_decisions) m.append(el("p", { class: "note" }, "Журнал выключен. Включите его на вкладке «Общие» и сохраните."));
+  const box = el("div", { class: "group log" });
+  m.append(el("div", { class: "actions", style: "margin-bottom:12px" },
+    el("button", { class: "btn", onclick: () => draw() }, "Обновить"),
+    el("button", { class: "btn danger", onclick: async () => { await api("/api/log", {}); draw(); } }, "Очистить")), box);
+  const draw = async () => {
+    try {
+      const list = await api("/api/log");
+      if (!list || !list.length) { box.replaceChildren(el("p", { class: "empty" }, "Записей нет.")); return; }
+      box.replaceChildren(el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Время"), el("th", {}, "Где"), el("th", {}, "Слово"), el("th", {}, "Решение"))),
+        el("tbody", {}, list.slice().reverse().map(x => el("tr", {},
+          el("td", {}, new Date(x.time).toLocaleTimeString()),
+          el("td", {}, x.app, el("div", { class: "help" }, x.rule + ", " + x.event)),
+          el("td", { class: "word" }, x.v.cur, x.v.switch || x.event === "вручную" ? " → " + x.v.alt : ""),
+          el("td", {}, (x.v.switch ? "исправлено: " : x.event === "вручную" || x.event === "отмена" ? "" : "оставлено: ") + x.v.reason))))));
+    } catch (e) { box.replaceChildren(el("p", { class: "empty" }, e.message)); }
+  };
+  draw();
+}
+
+// ---------- Сохранение ----------
+async function saveConfig() {
+  try {
+    const r = await api("/api/config", cfg);
+    S.config = r.config; cfg = structuredClone(r.config); saved = JSON.stringify(cfg); markDirty(); render();
+    const st = await api("/api/state"); S.status = st.status; renderStatus();
+    toast("Настройки сохранены и уже действуют");
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
+}
+$("#save").addEventListener("click", saveConfig);
+// Окно программы при закрытии с несохранёнными изменениями вызывает это после «Да».
+window.erisedSaveAndClose = async () => { if (await saveConfig() && window.erisedClose) window.erisedClose(); };
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && t !== tab && TABS.some(x => x[0] === t)) { tab = t; render(); } });
+$("#revert").addEventListener("click", () => { cfg = JSON.parse(saved); markDirty(); render(); });
+window.addEventListener("beforeunload", e => { if (JSON.stringify(cfg) !== saved) { e.preventDefault(); e.returnValue = ""; } });
+
+load().catch(e => { document.body.replaceChildren(el("main", {}, el("h2", {}, "Не удалось открыть настройки"), el("p", { class: "lead" }, e.message + ". Откройте настройки заново из меню значка Erised Switcher в трее."))); });
+</script>
+</body>
+</html>
