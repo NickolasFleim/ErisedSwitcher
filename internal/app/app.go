@@ -34,7 +34,7 @@ import (
 // Version — версия программы. При сборке релиза подставляется из тега:
 // go build -ldflags "-X erised/internal/app.Version=1.4.0" (так она не разойдётся с тегом,
 // иначе программа считала бы выпуск на GitHub новее себя и обновлялась бы без конца).
-var Version = "1.4.1"
+var Version = "1.4.2"
 
 // AppName — название программы.
 const AppName = "Erised Switcher"

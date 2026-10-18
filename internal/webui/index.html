@@ -90,6 +90,7 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .btn:active { transform: translateY(1px); border-bottom-width: 1px; }
 .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .btn.danger { color: var(--ru); }
+.btn.danger-fill { background: var(--ru); border-color: var(--ru); color: #fff; }
 .btn.small { padding: 3px 9px; font-size: 13px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
@@ -807,6 +808,14 @@ function renderLearned(m) {
   const filt = el("div", { class: "filters" },
     el("input", { type: "text", placeholder: "Найти слово", "aria-label": "Найти слово", oninput: e => { q = e.target.value.toLowerCase(); draw(); } }),
     (() => { const s = el("select", { "aria-label": "Откуда", onchange: e => { kind = e.target.value; draw(); } }, el("option", { value: "" }, "Все источники"), Object.entries(KIND).map(([k, v]) => el("option", { value: k }, "Вы " + v))); return s; })());
+  const total = (w.learned || []).length + (w.candidates || []).length;
+  const undo = renderLearned.undo;
+  m.append(el("div", { class: "actions", style: "margin:0 0 12px" },
+    el("button", { class: "btn danger", disabled: total === 0, onclick: () => confirmReset(w, total) }, "Сбросить собранные слова…"),
+    undo ? el("button", { class: "btn", onclick: () => {
+      w.learned = undo.learned; w.candidates = undo.candidates; w.ignored = undo.ignored;
+      renderLearned.undo = null; saveWords("Собранные слова возвращены");
+    } }, "Вернуть сброшенные слова") : null));
   const learnedBox = el("div"), candBox = el("div");
   m.append(filt, el("div", { class: "group" }, el("h3", {}, "Действуют"), learnedBox), el("div", { class: "group" }, el("h3", {}, "Кандидаты"),
     el("p", { class: "help" }, "Ещё не набрали нужного числа повторов или ждут вашей проверки."), candBox));
@@ -830,6 +839,35 @@ function renderLearned(m) {
   };
   const draw = () => { learnedBox.replaceChildren(table(w.learned || [], false)); candBox.replaceChildren(table(w.candidates || [], true)); };
   draw();
+}
+
+// Подтверждение сброса собранных слов.
+function confirmReset(w, total) {
+  let alsoIgnored = false;
+  const ignoredN = Object.values(w.ignored || {}).reduce((n, l) => n + l.length, 0);
+  const back = el("div", { class: "modal-back" });
+  const close = () => back.remove();
+  const box = el("div", { class: "modal", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "rs-title" },
+    el("h2", { id: "rs-title" }, "Сбросить собранные слова?"),
+    el("p", {}, `Будут удалены все слова, которые программа собрала сама: действующие и кандидаты — всего ${total}. ` +
+      "Отменённые исправления снова начнут исправляться, а слова, которые вы переводили вручную, — нет, пока программа не соберёт их заново."),
+    el("p", { class: "help" }, "Ваш словарь (свои слова, исключения, автозамены) и история набора не изменятся. До закрытия окна настроек сброс можно отменить."),
+    ignoredN ? el("div", { class: "choice" }, el("label", {},
+      el("input", { type: "checkbox", onchange: e => alsoIgnored = e.target.checked }),
+      el("span", {}, el("b", {}, `Очистить и список «Не собирать» (${ignoredN})`), el("small", {}, "Удалённые вами раньше слова снова смогут собираться")))) : null,
+    el("div", { class: "foot" },
+      el("button", { class: "btn", onclick: close }, "Отмена"),
+      el("button", { class: "btn primary danger-fill", onclick: () => {
+        renderLearned.undo = structuredClone({ learned: w.learned || [], candidates: w.candidates || [], ignored: w.ignored || {} });
+        w.learned = []; w.candidates = [];
+        if (alsoIgnored) w.ignored = { ru: [], uk: [], en: [] };
+        close(); saveWords("Собранные слова сброшены");
+      } }, "Сбросить")));
+  back.append(box);
+  back.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+  back.addEventListener("click", e => { if (e.target === back) close(); });
+  document.body.append(back);
+  box.querySelector(".foot .btn").focus(); // по умолчанию — «Отмена»
 }
 
 function renderProbe(m) {
