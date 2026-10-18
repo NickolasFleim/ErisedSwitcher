@@ -11,6 +11,7 @@ import (
 	"erised/internal/config"
 	"erised/internal/keymap"
 	"erised/internal/lang"
+	"erised/internal/predict"
 	"erised/internal/words"
 )
 
@@ -77,7 +78,9 @@ type Action struct {
 // Result — ответ ядра на событие.
 type Result struct {
 	Swallow bool // не пропускать это нажатие в приложение
-	Actions []Action
+	// Варианты в полоске подсказок изменились (см. Engine.Suggestions).
+	SuggestChanged bool
+	Actions        []Action
 }
 
 // LogEntry — запись журнала решений.
@@ -123,6 +126,9 @@ type Engine struct {
 	logf    func(LogEntry)
 
 	window uintptr
+	pred   *predict.Predictor
+	sv     SuggestionView
+	sk     suggestKeys
 	// Похоже, что в окне сейчас выделен текст (Shift+стрелки, Ctrl+A, протяжка или
 	// двойной щелчок мышью). Тогда конвертация слова конвертирует выделение.
 	selection  bool
@@ -160,6 +166,7 @@ func (e *Engine) SetConfig(cfg *config.Config) {
 	defer e.mu.Unlock()
 	e.cfg = cfg
 	e.hk = parseHotkeys(cfg)
+	e.sk = parseSuggestKeys(cfg)
 }
 
 // SetLogger задаёт обработчик журнала решений.
@@ -171,8 +178,8 @@ func (e *Engine) Enabled() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.ena
 // SetEnabled включает/выключает.
 func (e *Engine) SetEnabled(v bool) { e.mu.Lock(); e.enabled = v; e.resetAll(); e.mu.Unlock() }
 
-// Reset сбрасывает буфер (щелчок мышью, смена окна и т.п.).
-func (e *Engine) Reset() { e.mu.Lock(); e.resetAll(); e.mu.Unlock() }
+// Reset сбрасывает буфер (щелчок мышью, смена окна и т.п.) и прячет подсказки.
+func (e *Engine) Reset() { e.mu.Lock(); e.resetAll(); e.clearSuggestions(); e.mu.Unlock() }
 
 // NoteSelection сообщает, что текст, вероятно, выделен (или выделение снято).
 // Вызывается для действий мышью.
@@ -251,7 +258,24 @@ func isModifier(vk uint16) bool {
 func (e *Engine) HandleKey(ev KeyEvent, ctx *Context) Result {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if !lang.Ready() {
+		return Result{} // словари ещё загружаются (первую секунду после запуска) — не ждём
+	}
+	ver := e.sv.Version
+	// Пока видна полоска подсказок, Tab / Ctrl+1… принимают вариант.
+	if res, ok := e.acceptByKey(ev, ctx); ok {
+		res.SuggestChanged = e.sv.Version != ver
+		return res
+	}
+	res := e.handleKey(ev, ctx)
+	if (ev.Down && !isModifier(ev.VK)) || len(res.Actions) > 0 {
+		e.updateSuggestions(ctx)
+	}
+	res.SuggestChanged = e.sv.Version != ver
+	return res
+}
 
+func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 	if ctx.Window != e.window {
 		e.window = ctx.Window
 		e.resetAll()
@@ -488,7 +512,8 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		return finish(Result{})
 	}
 	t.trail = vk
-	if !check || r.Mode != "auto" || t.mixed || t.corrected || t.lang == keymap.Unknown {
+	if !check || t.mixed || t.corrected || t.lang == keymap.Unknown {
+		e.learnWord(&t, ctx)
 		e.pushHist(t)
 		return finish(Result{})
 	}
@@ -503,8 +528,12 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		}
 	}
 	if r.SkipFirstWord && len(e.hist) == 0 {
+		e.learnWord(&t, ctx)
 		e.pushHist(t)
 		return finish(Result{})
+	}
+	if r.Mode != "auto" {
+		return finish(e.finishWord(t, vk, newLine, ctx))
 	}
 
 	prevAlt := false
@@ -519,6 +548,7 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: keymap.RenderAll(t.keys, alt), Keys: t.keys,
 			Target: e.targetFor(r, alt), Trail: []uint16{vk}, Reason: v.Reason}
 		t.lang, t.corrected = alt, true
+		e.learnWord(&t, ctx)
 		e.pushHist(t)
 		if !newLine {
 			e.last, e.fresh = c, true
@@ -526,10 +556,24 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		return finish(Result{Swallow: true, Actions: []Action{act}})
 	}
 
+	return finish(e.finishWord(t, vk, newLine, ctx))
+}
+
+// finishWord — раскладка верная: исправляем опечатку (если надо), учимся и запоминаем слово.
+func (e *Engine) finishWord(t token, vk uint16, newLine bool, ctx *Context) Result {
+	if act, c, ok := e.autocorrect(&t, vk, ctx); ok {
+		e.learnWord(&t, ctx)
+		e.pushHist(t)
+		if !newLine {
+			e.last, e.fresh = c, true
+		}
+		return Result{Swallow: true, Actions: []Action{act}}
+	}
 	// Слово оставили как есть — возможно, его стоит запомнить.
 	e.learnPassive(t, ctx)
+	e.learnWord(&t, ctx)
 	e.pushHist(t)
-	return finish(Result{})
+	return Result{}
 }
 
 func (e *Engine) learnPassive(t token, ctx *Context) {
@@ -594,6 +638,9 @@ func (e *Engine) undo(ctx *Context, byBackspace bool) Result {
 	}
 	act := Action{Kind: ActReplace, Backspaces: n, Text: text, Keys: c.origKeys, Target: e.targetFor(&ctx.Rule, c.origLang),
 		Trail: trail, Reason: "отмена исправления"}
+	if c.newLang == c.origLang { // отмена исправления опечатки: раскладку не трогаем
+		act.Target = keymap.Unknown
+	}
 	if len(c.origLangs) > 0 {
 		act.Keys = nil
 	}

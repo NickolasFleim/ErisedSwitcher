@@ -82,6 +82,33 @@ type Rule struct {
 
 	// Исправлять однобуквенные слова (z → я), если предыдущее слово фразы на другом языке.
 	SingleLetterContext *bool `json:"single_letter_context,omitempty"`
+
+	// Исправление опечаток: "auto" — исправлять при пробеле, "suggest" — только подсказывать, "off".
+	Autocorrect *string `json:"autocorrect,omitempty"`
+	// Не исправлять слова короче.
+	AutocorrectMinLen *int `json:"autocorrect_min_len,omitempty"`
+	// Насколько далеко может быть исправление (1 — одна обычная ошибка; соседняя клавиша стоит 0,6).
+	AutocorrectMaxDistShort *float64 `json:"autocorrect_max_dist_short,omitempty"` // для слов до 5 букв
+	AutocorrectMaxDistLong  *float64 `json:"autocorrect_max_dist_long,omitempty"`  // от 6 букв
+	// Исправление должно быть не реже этой частотности (шкала 1–7).
+	AutocorrectMinZipf *float64 `json:"autocorrect_min_zipf,omitempty"`
+	// И заметно лучше второго варианта.
+	AutocorrectMargin *float64 `json:"autocorrect_margin,omitempty"`
+	// Осторожно с окончаниями (не исправлять, если отличается только окончание).
+	AutocorrectEndingCaution *bool `json:"autocorrect_ending_caution,omitempty"`
+	// Исправлять слова с заглавной буквы не в начале предложения (обычно это имена).
+	AutocorrectCapitalized *bool `json:"autocorrect_capitalized,omitempty"`
+	// Исправлять частые ошибки написания, которые сами есть в словаре (recieve, извените).
+	AutocorrectMisspellings *bool `json:"autocorrect_misspellings,omitempty"`
+
+	// Подсказки: показывать варианты при наборе.
+	Predict *bool `json:"predict,omitempty"`
+	// После скольких букв показывать варианты.
+	PredictMinPrefix *int `json:"predict_min_prefix,omitempty"`
+	// Предлагать следующее слово после пробела (по вашей истории).
+	PredictNextWord *bool `json:"predict_next_word,omitempty"`
+	// Запоминать, какие слова вы набираете и в каком порядке (только известные слова).
+	LearnTyping *bool `json:"learn_typing,omitempty"`
 }
 
 // AppRule — правило для приложения (процесса).
@@ -103,6 +130,13 @@ type Hotkeys struct {
 	ToggleEnabled    string `json:"toggle_enabled"`
 	SwitchLayout     string `json:"switch_layout"`
 	ToggleApp        string `json:"toggle_app"`
+	// Принять подсказку: первый вариант и варианты по номеру (работают, только пока видна полоска).
+	AcceptFirst string `json:"accept_first"`
+	Accept1     string `json:"accept_1"`
+	Accept2     string `json:"accept_2"`
+	Accept3     string `json:"accept_3"`
+	// Скрыть полоску подсказок (клавиша всё равно доходит до программы).
+	Dismiss string `json:"dismiss"`
 }
 
 // Learn — автоматический сбор слов.
@@ -121,6 +155,35 @@ type Learn struct {
 	MaxCandidates int `json:"max_candidates"`
 	// Собирать вообще.
 	Enabled bool `json:"enabled"`
+}
+
+// Suggest — полоска подсказок.
+type Suggest struct {
+	// Где показывать: "caret" — у курсора ввода, "mouse" — у указателя мыши,
+	// "bottom" — внизу экрана, "off" — не показывать (исправление опечаток работает и так).
+	Position string `json:"position"`
+	// Если курсор ввода не найден: "mouse" или "bottom".
+	Fallback string `json:"fallback"`
+	// Сколько вариантов показывать (1–5).
+	Count int `json:"count"`
+	// Добавлять пробел после принятого слова.
+	AddSpace bool `json:"add_space"`
+	// Подписи клавиш (Tab, Ctrl+2…) под вариантами.
+	ShowHints bool `json:"show_hints"`
+	// Принимать первый вариант стрелкой вправо (сразу после набора слова).
+	AcceptRight bool `json:"accept_right"`
+	// Принимать вариант щелчком мыши.
+	AcceptClick bool `json:"accept_click"`
+	// Tab принимает и следующее слово (когда слово ещё не начато). Иначе Tab там работает как обычно.
+	TabNextWord bool `json:"tab_next_word"`
+	// Следующее слово предлагать, если вы набирали эту пару хотя бы столько раз.
+	NextMinCount int `json:"next_min_count"`
+	// Размер шрифта полоски (1 — обычный).
+	Scale float64 `json:"scale"`
+	// Искать курсор ввода через специальные возможности Windows (нужно для Chrome, Edge, Office).
+	UseAccessibility bool `json:"use_accessibility"`
+	// Предел пар слов в истории набора.
+	MaxPairs int `json:"max_pairs"`
 }
 
 // Config — файл настроек целиком.
@@ -148,6 +211,8 @@ type Config struct {
 	// Автозапуск с Windows.
 	Autostart bool `json:"autostart"`
 
+	Suggest Suggest `json:"suggest"`
+
 	Defaults Rule      `json:"defaults"`
 	Apps     []AppRule `json:"apps"`
 	Hotkeys  Hotkeys   `json:"hotkeys"`
@@ -167,37 +232,50 @@ func Default() *Config {
 		UIMode:          "window",
 		LogSize:         200,
 		Defaults: Rule{
-			Mode:                 ptr("auto"),
-			MinLen:               ptr(2),
-			DictionaryOnly:       ptr(false),
-			ShortWordMinZipf:     ptr(3.5),
-			ShortWordCurMax:      ptr(-1.6),
-			DictCurMax:           ptr(-1.2),
-			NgramMinLen:          ptr(4),
-			NgramCurMax:          ptr(-1.8),
-			NgramAltMin:          ptr(-1.5),
-			NgramMargin:          ptr(0.8),
-			EarlySwitch:          ptr(true),
-			EarlyMinLen:          ptr(4),
-			CorrectOnSpace:       ptr(true),
-			CorrectOnEnter:       ptr(true),
-			CorrectOnTab:         ptr(false),
-			SkipWithDigits:       ptr(true),
-			SkipChars:            ptr("@#$\\_=|"),
-			SkipFirstWord:        ptr(false),
-			UndoByBackspace:      ptr(true),
-			Inject:               ptr("unicode"),
-			BackspaceDelayMs:     ptr(0),
-			KeyDelayMs:           ptr(0),
-			SwitchDelayMs:        ptr(15),
-			SwitchLayout:         ptr(true),
-			LayoutSource:         ptr("auto"),
-			SelectionAllowed:     ptr(true),
-			CopyCombo:            ptr("Ctrl+C"),
-			ReselectAfterConvert: ptr(true),
-			LearnPassive:         ptr(true),
-			PreferWords:          ptr(""),
-			SingleLetterContext:  ptr(true),
+			Mode:                     ptr("auto"),
+			MinLen:                   ptr(2),
+			DictionaryOnly:           ptr(false),
+			ShortWordMinZipf:         ptr(3.5),
+			ShortWordCurMax:          ptr(-1.6),
+			DictCurMax:               ptr(-1.2),
+			NgramMinLen:              ptr(4),
+			NgramCurMax:              ptr(-1.8),
+			NgramAltMin:              ptr(-1.5),
+			NgramMargin:              ptr(0.8),
+			EarlySwitch:              ptr(true),
+			EarlyMinLen:              ptr(4),
+			CorrectOnSpace:           ptr(true),
+			CorrectOnEnter:           ptr(true),
+			CorrectOnTab:             ptr(false),
+			SkipWithDigits:           ptr(true),
+			SkipChars:                ptr("@#$\\_=|"),
+			SkipFirstWord:            ptr(false),
+			UndoByBackspace:          ptr(true),
+			Inject:                   ptr("unicode"),
+			BackspaceDelayMs:         ptr(0),
+			KeyDelayMs:               ptr(0),
+			SwitchDelayMs:            ptr(15),
+			SwitchLayout:             ptr(true),
+			LayoutSource:             ptr("auto"),
+			SelectionAllowed:         ptr(true),
+			CopyCombo:                ptr("Ctrl+C"),
+			ReselectAfterConvert:     ptr(true),
+			LearnPassive:             ptr(true),
+			PreferWords:              ptr(""),
+			SingleLetterContext:      ptr(true),
+			Autocorrect:              ptr("auto"),
+			AutocorrectMinLen:        ptr(4),
+			AutocorrectMaxDistShort:  ptr(1.0),
+			AutocorrectMaxDistLong:   ptr(1.6),
+			AutocorrectMinZipf:       ptr(2.5),
+			AutocorrectMargin:        ptr(1.0),
+			AutocorrectEndingCaution: ptr(false),
+			AutocorrectCapitalized:   ptr(false),
+			AutocorrectMisspellings:  ptr(true),
+			Predict:                  ptr(true),
+			PredictMinPrefix:         ptr(2),
+			PredictNextWord:          ptr(true),
+			LearnTyping:              ptr(true),
 		},
 		Apps: []AppRule{
 			{
@@ -214,6 +292,8 @@ func Default() *Config {
 					LearnPassive:         ptr(true),
 					CopyCombo:            ptr("Ctrl+Shift+C"),
 					ReselectAfterConvert: ptr(false),
+					Autocorrect:          ptr("off"),
+					Predict:              ptr(false),
 					PreferWords: ptr("cd ls ll la pwd dir cls git gh ssh scp vim vi nvim nano cat less more grep rg find fd sed awk " +
 						"npm npx pnpm yarn node deno bun python py pip uv go cargo rustc make cmake gcc dotnet " +
 						"docker kubectl helm terraform az aws gcloud curl wget echo exit clear code sudo apt brew winget choco scoop " +
@@ -228,6 +308,8 @@ func Default() *Config {
 				Rule: Rule{
 					DictionaryOnly: ptr(true),
 					SkipChars:      ptr("@#$/\\_=|:~(){}<>"),
+					Autocorrect:    ptr("off"),
+					Predict:        ptr(false),
 				},
 			},
 			{
@@ -244,6 +326,25 @@ func Default() *Config {
 			ToggleEnabled:    "Ctrl+Alt+Pause",
 			SwitchLayout:     "",
 			ToggleApp:        "",
+			AcceptFirst:      "Tab",
+			Accept1:          "Ctrl+1",
+			Accept2:          "Ctrl+2",
+			Accept3:          "Ctrl+3",
+			Dismiss:          "Esc",
+		},
+		Suggest: Suggest{
+			Position:         "caret",
+			Fallback:         "mouse",
+			Count:            3,
+			AddSpace:         true,
+			ShowHints:        true,
+			AcceptRight:      false,
+			AcceptClick:      true,
+			TabNextWord:      false,
+			NextMinCount:     2,
+			Scale:            1.0,
+			UseAccessibility: true,
+			MaxPairs:         60000,
 		},
 		Learn: Learn{
 			Enabled:        true,
@@ -259,39 +360,52 @@ func Default() *Config {
 
 // Effective — правило со всеми заполненными полями (глобальные + правило приложения).
 type Effective struct {
-	RuleName             string
-	Mode                 string
-	MinLen               int
-	DictionaryOnly       bool
-	ShortWordMinZipf     float64
-	ShortWordCurMax      float64
-	DictCurMax           float64
-	NgramMinLen          int
-	NgramCurMax          float64
-	NgramAltMin          float64
-	NgramMargin          float64
-	EarlySwitch          bool
-	EarlyMinLen          int
-	CorrectOnSpace       bool
-	CorrectOnEnter       bool
-	CorrectOnTab         bool
-	SkipWithDigits       bool
-	SkipChars            string
-	SkipFirstWord        bool
-	UndoByBackspace      bool
-	Inject               string
-	BackspaceDelayMs     int
-	KeyDelayMs           int
-	SwitchDelayMs        int
-	SwitchLayout         bool
-	LayoutSource         string
-	SelectionAllowed     bool
-	CopyCombo            string
-	ReselectAfterConvert bool
-	LearnPassive         bool
-	PreferWords          string
-	SingleLetterContext  bool
-	Prefer               map[string]bool `json:"-"`
+	RuleName                 string
+	Mode                     string
+	MinLen                   int
+	DictionaryOnly           bool
+	ShortWordMinZipf         float64
+	ShortWordCurMax          float64
+	DictCurMax               float64
+	NgramMinLen              int
+	NgramCurMax              float64
+	NgramAltMin              float64
+	NgramMargin              float64
+	EarlySwitch              bool
+	EarlyMinLen              int
+	CorrectOnSpace           bool
+	CorrectOnEnter           bool
+	CorrectOnTab             bool
+	SkipWithDigits           bool
+	SkipChars                string
+	SkipFirstWord            bool
+	UndoByBackspace          bool
+	Inject                   string
+	BackspaceDelayMs         int
+	KeyDelayMs               int
+	SwitchDelayMs            int
+	SwitchLayout             bool
+	LayoutSource             string
+	SelectionAllowed         bool
+	CopyCombo                string
+	ReselectAfterConvert     bool
+	LearnPassive             bool
+	PreferWords              string
+	SingleLetterContext      bool
+	Autocorrect              string
+	AutocorrectMinLen        int
+	AutocorrectMaxDistShort  float64
+	AutocorrectMaxDistLong   float64
+	AutocorrectMinZipf       float64
+	AutocorrectMargin        float64
+	AutocorrectEndingCaution bool
+	AutocorrectCapitalized   bool
+	AutocorrectMisspellings  bool
+	Predict                  bool
+	PredictMinPrefix         int
+	PredictNextWord          bool
+	LearnTyping              bool
+	Prefer                   map[string]bool `json:"-"`
 }
 
 func pick[T any](dst *T, v *T) {
@@ -332,6 +446,19 @@ func apply(e *Effective, r *Rule) {
 	pick(&e.LearnPassive, r.LearnPassive)
 	pick(&e.PreferWords, r.PreferWords)
 	pick(&e.SingleLetterContext, r.SingleLetterContext)
+	pick(&e.Autocorrect, r.Autocorrect)
+	pick(&e.AutocorrectMinLen, r.AutocorrectMinLen)
+	pick(&e.AutocorrectMaxDistShort, r.AutocorrectMaxDistShort)
+	pick(&e.AutocorrectMaxDistLong, r.AutocorrectMaxDistLong)
+	pick(&e.AutocorrectMinZipf, r.AutocorrectMinZipf)
+	pick(&e.AutocorrectMargin, r.AutocorrectMargin)
+	pick(&e.AutocorrectEndingCaution, r.AutocorrectEndingCaution)
+	pick(&e.AutocorrectCapitalized, r.AutocorrectCapitalized)
+	pick(&e.AutocorrectMisspellings, r.AutocorrectMisspellings)
+	pick(&e.Predict, r.Predict)
+	pick(&e.PredictMinPrefix, r.PredictMinPrefix)
+	pick(&e.PredictNextWord, r.PredictNextWord)
+	pick(&e.LearnTyping, r.LearnTyping)
 }
 
 // Resolve собирает действующие параметры для окна. Правила применяются по порядку,
@@ -434,6 +561,14 @@ func (c *Config) Validate() []string {
 		if r.Inject != nil {
 			check(injects[*r.Inject], name+": способ ввода должен быть unicode или keys")
 		}
+		if r.Autocorrect != nil {
+			check(*r.Autocorrect == "auto" || *r.Autocorrect == "suggest" || *r.Autocorrect == "off", name+": исправление опечаток должно быть auto, suggest или off")
+		}
+		for _, v := range []*float64{r.AutocorrectMaxDistShort, r.AutocorrectMaxDistLong} {
+			if v != nil {
+				check(*v >= 0 && *v <= 2, name+": расстояние исправления — от 0 до 2")
+			}
+		}
 		if r.LayoutSource != nil {
 			check(sources[*r.LayoutSource], name+": источник раскладки должен быть auto, focus, console или tracked")
 		}
@@ -457,6 +592,8 @@ func (c *Config) Validate() []string {
 		"Конвертировать выделение": c.Hotkeys.ConvertSelection, "Отменить": c.Hotkeys.Undo,
 		"Вкл/выкл": c.Hotkeys.ToggleEnabled, "Переключить раскладку": c.Hotkeys.SwitchLayout,
 		"Вкл/выкл для приложения": c.Hotkeys.ToggleApp,
+		"Принять подсказку":       c.Hotkeys.AcceptFirst, "Вариант 1": c.Hotkeys.Accept1,
+		"Вариант 2": c.Hotkeys.Accept2, "Вариант 3": c.Hotkeys.Accept3, "Скрыть подсказки": c.Hotkeys.Dismiss,
 	} {
 		if _, err := ParseHotkey(h); err != nil {
 			errs = append(errs, fmt.Sprintf("Горячая клавиша «%s»: %v", name, err))
@@ -464,6 +601,11 @@ func (c *Config) Validate() []string {
 	}
 	errs = append(errs, c.hotkeyConflicts()...)
 	check(c.UIMode == "window" || c.UIMode == "browser", "Где открывать настройки: window или browser")
+	sg := &c.Suggest
+	check(map[string]bool{"caret": true, "mouse": true, "bottom": true, "off": true}[sg.Position], "Положение подсказок: caret, mouse, bottom или off")
+	check(sg.Fallback == "mouse" || sg.Fallback == "bottom", "Если курсор не найден: mouse или bottom")
+	check(sg.Count >= 1 && sg.Count <= 5, "Число вариантов: от 1 до 5")
+	check(sg.Scale >= 0.6 && sg.Scale <= 3, "Размер шрифта подсказок: от 0,6 до 3")
 	check(c.DoubleTapMs >= 100 && c.DoubleTapMs <= 2000, "Окно двойного нажатия: от 100 до 2000 мс")
 	check(c.Learn.ExceptionAfter >= 1 && c.Learn.WordAfter >= 1 && c.Learn.PassiveAfter >= 1, "Счётчики сбора слов должны быть не меньше 1")
 	return errs
@@ -557,6 +699,9 @@ func (c *Config) hotkeyConflicts() []string {
 		{"Вкл/выкл", c.Hotkeys.ToggleEnabled},
 		{"Переключить раскладку", c.Hotkeys.SwitchLayout},
 		{"Вкл/выкл для приложения", c.Hotkeys.ToggleApp},
+		{"Вариант 1", c.Hotkeys.Accept1},
+		{"Вариант 2", c.Hotkeys.Accept2},
+		{"Вариант 3", c.Hotkeys.Accept3},
 	}
 	seen := map[string]string{}
 	var errs []string
@@ -584,8 +729,18 @@ func upgrade(c *Config) {
 	for i := range c.Apps {
 		a := &c.Apps[i]
 		// 1.1: в терминалах не выделять результат конвертации (Shift+стрелки там ведут себя иначе).
-		if a.ReselectAfterConvert == nil && strings.Contains(strings.ToLower(a.Process), "windowsterminal.exe") {
+		proc := strings.ToLower(a.Process)
+		if a.ReselectAfterConvert == nil && strings.Contains(proc, "windowsterminal.exe") {
 			a.ReselectAfterConvert = ptr(false)
+		}
+		// 1.2: в терминалах и редакторах кода подсказки и исправление опечаток выключены.
+		if strings.Contains(proc, "windowsterminal.exe") || strings.Contains(proc, "code.exe") {
+			if a.Autocorrect == nil {
+				a.Autocorrect = ptr("off")
+			}
+			if a.Predict == nil {
+				a.Predict = ptr(false)
+			}
 		}
 	}
 	if c.UIMode == "" {

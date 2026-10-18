@@ -136,6 +136,7 @@ td .btn { margin-right: 4px; }
 .cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); }
 .cap .why { font-size: 12px; color: var(--muted); max-width: 240px; margin-top: 4px; }
 .cap .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+.cap .typo { color: var(--ink); border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 6px; }
 
 .log td { font-size: 13px; }
 .kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--cap); }
@@ -243,6 +244,21 @@ const RULE_FIELDS = [
   { k: "copy_combo", t: "text", l: "Чем копировать выделение", h: "Например Ctrl+C, а в Windows Terminal — Ctrl+Shift+C." },
   { k: "reselect_after_convert", t: "bool", l: "Выделять текст после конвертации", h: "Тогда повторное нажатие вернёт текст как было." },
   { k: "learn_passive", t: "bool", l: "Собирать незнакомые слова, которые вы не исправляете" },
+  { g: "Исправление опечаток", sec: "p" },
+  { k: "autocorrect", t: "select", l: "Опечатки", h: "Исправлять при пробеле (Backspace сразу после — вернуть как было) или только показывать правильный вариант первым в полоске.", o: [["auto", "Исправлять при пробеле"], ["suggest", "Только подсказывать"], ["off", "Не трогать"]] },
+  { k: "autocorrect_min_len", t: "int", l: "Не исправлять слова короче", h: "Из трёх букв исправляются только очевидные ошибки в очень частых словах (teh → the)." },
+  { k: "autocorrect_max_dist_short", t: "float", l: "Допустимая ошибка в словах до 5 букв", h: "1 — одна ошибка. Соседняя клавиша или перестановка букв стоят 0,6, пропущенная двойная буква — 0,5." },
+  { k: "autocorrect_max_dist_long", t: "float", l: "Допустимая ошибка в словах от 6 букв", h: "1,6 — например, две ошибки соседними клавишами." },
+  { k: "autocorrect_min_zipf", t: "float", l: "Исправлять только на слова не реже", h: "Частотность от 1 до 7. Больше — осторожнее." },
+  { k: "autocorrect_margin", t: "float", l: "Насколько лучший вариант должен опережать второй", h: "Если есть два похожих слова, исправления не будет — только подсказка." },
+  { k: "autocorrect_misspellings", t: "bool", l: "Исправлять частые ошибки написания", h: "recieve → receive, извените → извините: эти «слова» есть в словаре, но правильный вариант в сотни раз частотнее." },
+  { k: "autocorrect_capitalized", t: "bool", l: "Исправлять слова с заглавной буквы посреди предложения", h: "Обычно это имена и названия, поэтому выключено." },
+  { k: "autocorrect_ending_caution", t: "bool", l: "Осторожно с окончаниями", h: "Не исправлять, если отличается только окончание: скорее всего, это другая форма слова." },
+  { g: "Подсказки при наборе", sec: "p" },
+  { k: "predict", t: "bool", l: "Показывать варианты при наборе" },
+  { k: "predict_min_prefix", t: "int", l: "После скольких букв показывать" },
+  { k: "predict_next_word", t: "bool", l: "Предлагать следующее слово", h: "После пробела — слова, которые вы чаще всего набирали после предыдущего." },
+  { k: "learn_typing", t: "bool", l: "Учиться на вашем наборе", h: "Запоминаются только известные слова и их пары, локально. Поля паролей не учитываются." },
 ];
 
 const HOTKEYS = [
@@ -253,12 +269,19 @@ const HOTKEYS = [
   ["toggle_enabled", "Включить или выключить программу", ""],
   ["toggle_app", "Включить или выключить для текущего приложения", "Добавляет или убирает правило «выключено» для активной программы."],
   ["switch_layout", "Переключить раскладку", "Например CapsLock или RCtrl, если хотите переключать одной клавишей."],
+  { g: "Подсказки", h: "Эти клавиши действуют, только пока на экране полоска с вариантами — в остальное время Tab и Ctrl+цифры работают как обычно." },
+  ["accept_first", "Принять первый вариант", "Для следующего слова (когда слово ещё не начато) Tab не перехватывается, если не включено на вкладке «Подсказки»."],
+  ["accept_1", "Принять вариант 1", ""],
+  ["accept_2", "Принять вариант 2", ""],
+  ["accept_3", "Принять вариант 3", ""],
+  ["dismiss", "Скрыть полоску", "Клавиша всё равно доходит до программы."],
 ];
-const HK_SUGGEST = ["DoubleShift", "DoubleLShift", "DoubleRShift", "DoubleCtrl", "DoubleRCtrl", "RCtrl", "RShift", "Pause", "Shift+Pause", "Ctrl+Pause", "Ctrl+Shift+Pause", "Ctrl+Alt+Pause", "CapsLock", "ScrollLock", "F12"];
+const HK_SUGGEST = ["Tab", "Ctrl+1", "Ctrl+2", "Ctrl+3", "Alt+1", "Alt+2", "Alt+3", "Esc", "DoubleShift", "DoubleLShift", "DoubleRShift", "DoubleCtrl", "DoubleRCtrl", "RCtrl", "RShift", "Pause", "Shift+Pause", "Ctrl+Pause", "Ctrl+Shift+Pause", "Ctrl+Alt+Pause", "CapsLock", "ScrollLock", "F12"];
 
 const TABS = [
   ["general", "Общие", "Запуск, раскладки"],
   ["detect", "Распознавание", "Пороги и поведение"],
+  ["predict", "Подсказки", "Опечатки, дополнение"],
   ["apps", "Приложения", "Свои правила"],
   ["hotkeys", "Горячие клавиши", ""],
   ["dict", "Словарь", "Свои слова, исключения"],
@@ -314,7 +337,7 @@ function render() {
       name, sub ? el("small", {}, sub) : null));
   }
   const m = $("#main"); m.replaceChildren();
-  ({ general: renderGeneral, detect: renderDetect, apps: renderApps, hotkeys: renderHotkeys, dict: renderDict, learned: renderLearned, probe: renderProbe, log: renderLog })[tab](m);
+  ({ general: renderGeneral, detect: renderDetect, predict: renderPredict, apps: renderApps, hotkeys: renderHotkeys, dict: renderDict, learned: renderLearned, probe: renderProbe, log: renderLog })[tab](m);
 }
 
 // ---------- Поля ----------
@@ -360,9 +383,14 @@ function field(def, obj, key, opts = {}) {
 }
 function ruleForm(obj, opts) {
   const frag = [];
-  let grp = null;
+  let grp = null, sec = "";
   for (const d of RULE_FIELDS) {
-    if (d.g) { grp = el("div", { class: "group" }, el("h3", {}, d.g)); frag.push(grp); continue; }
+    if (d.g) {
+      sec = d.sec || "";
+      if (opts.only !== undefined && opts.only !== sec) { grp = null; continue; }
+      grp = el("div", { class: "group" }, el("h3", {}, d.g)); frag.push(grp); continue;
+    }
+    if (!grp) continue;
     grp.append(field(d, obj, d.k, { ...opts, base: opts.baseObj ? opts.baseObj[d.k] : undefined, orig: opts.origObj ? opts.origObj[d.k] : obj[d.k] }));
   }
   return frag;
@@ -402,10 +430,57 @@ function renderGeneral(m) {
   );
 }
 
+// ---------- Подсказки ----------
+function renderPredict(m) {
+  const sg = cfg.suggest, orig = JSON.parse(saved).suggest || {};
+  const f = (k, t, l, h, o) => field({ k, t, l, h, o }, sg, k, { prefix: "sg", orig: orig[k] });
+  m.append(el("h2", {}, "Подсказки"),
+    el("p", { class: "lead" }, "Как на телефоне: полоска с вариантами слова, исправление опечаток при пробеле и следующее слово по вашей истории. Принять вариант — Tab, Ctrl+1/2/3 или щелчком. Отменить исправление — Backspace сразу после него."),
+    el("div", { class: "group" },
+      el("h3", {}, "Полоска"),
+      f("position", "select", "Где показывать", "Курсор ввода находится не во всех программах — тогда см. следующий пункт.", [["caret", "У курсора ввода"], ["mouse", "У указателя мыши"], ["bottom", "Внизу экрана"], ["off", "Не показывать"]]),
+      f("fallback", "select", "Если курсор ввода не найден", "", [["mouse", "У указателя мыши"], ["bottom", "Внизу экрана"]]),
+      f("count", "int", "Сколько вариантов показывать", "От 1 до 5."),
+      f("show_hints", "bool", "Подписывать клавиши", "Tab, Ctrl+2… рядом с вариантами."),
+      f("scale", "float", "Размер шрифта", "1 — обычный."),
+      f("use_accessibility", "bool", "Искать курсор через специальные возможности Windows", "Нужно для Chrome, Edge, Firefox и Office. Выключите, если в какой-то программе это мешает.")),
+    el("div", { class: "group" },
+      el("h3", {}, "Как принимать вариант"),
+      f("add_space", "bool", "Добавлять пробел после слова"),
+      f("accept_click", "bool", "Щелчком мыши"),
+      f("accept_right", "bool", "Стрелкой вправо сразу после набора"),
+      f("tab_next_word", "bool", "Tab принимает и следующее слово", "Когда слово ещё не начато. Выключено, чтобы Tab в начале строки работал как обычно."),
+      f("next_min_count", "int", "Следующее слово — после скольких повторов пары", "Чем больше, тем реже, но точнее.")),
+    ...ruleForm(cfg.defaults, { prefix: "dp", origObj: JSON.parse(saved).defaults, only: "p" }),
+    el("p", { class: "note" }, "Для отдельных программ всё это можно переопределить на вкладке «Приложения». В терминалах и редакторах кода подсказки и исправление опечаток по умолчанию выключены."));
+  const box = el("div", { class: "group" });
+  m.append(el("div", { class: "group" },
+    el("h3", {}, "Ваша история набора"),
+    el("p", { class: "help" }, "Только известные слова и пары «слово → следующее слово» со счётчиками. Хранится в typing.json на этом компьютере."),
+    box));
+  const draw = async (op) => {
+    try {
+      const st = await api("/api/history", op);
+      const rows = (st.top_pairs || []).slice(0, 60);
+      box.replaceChildren(
+        el("p", {}, `Слов: ${st.words}, пар: ${st.pairs}.`),
+        rows.length ? el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "После слова"), el("th", {}, "идёт"), el("th", {}, "Раз"), el("th", {}))),
+          el("tbody", {}, rows.map(p => el("tr", {},
+            el("td", { class: "word" }, el("span", { class: "lang " + p.lang }, p.lang.toUpperCase()), " ", p.prev),
+            el("td", { class: "word" }, p.next), el("td", {}, String(p.n)),
+            el("td", {}, el("button", { class: "btn small danger", onclick: () => draw({ op: "forget", lang: p.lang, prev: p.prev, next: p.next }) }, "Забыть"))))))
+          : el("p", { class: "empty" }, "Пока пусто. Пары появятся, когда вы будете набирать текст."),
+        el("div", { class: "actions", style: "padding:10px 0 14px" },
+          el("button", { class: "btn danger", onclick: () => { if (confirm("Стереть всю историю набора?")) draw({ op: "clear" }); } }, "Стереть историю")));
+    } catch (e) { box.replaceChildren(el("p", { class: "empty" }, e.message)); }
+  };
+  draw();
+}
+
 function renderDetect(m) {
   m.append(el("h2", {}, "Распознавание"),
     el("p", { class: "lead" }, "Общие правила для всех программ. На вкладке «Приложения» их можно переопределить для отдельных программ. Проверить, как меняются решения, удобно на вкладке «Проверка»."),
-    ...ruleForm(cfg.defaults, { prefix: "d", origObj: JSON.parse(saved).defaults }),
+    ...ruleForm(cfg.defaults, { prefix: "d", origObj: JSON.parse(saved).defaults, only: "" }),
     el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => { cfg.defaults = structuredClone(S.defaults.defaults); markDirty(); render(); } }, "Вернуть значения по умолчанию")));
 }
 
@@ -463,7 +538,9 @@ function renderHotkeys(m) {
     el("datalist", { id: "hk-suggest" }, HK_SUGGEST.map(s => el("option", { value: s }))));
   const g = el("div", { class: "group" });
   const orig = JSON.parse(saved).hotkeys;
-  for (const [k, l, h] of HOTKEYS) {
+  for (const item of HOTKEYS) {
+    if (!Array.isArray(item)) { g.append(el("h3", {}, item.g), el("p", { class: "help" }, item.h)); continue; }
+    const [k, l, h] = item;
     const input = el("input", { type: "text", list: "hk-suggest", id: "hk-" + k, value: cfg.hotkeys[k] || "", placeholder: "выключено", oninput: e => { cfg.hotkeys[k] = e.target.value.trim(); markDirty(); } });
     const rec = el("button", { class: "btn small", onclick: () => {
       input.classList.add("recording"); input.value = ""; input.placeholder = "нажмите сочетание…"; input.focus();
@@ -572,18 +649,23 @@ function renderProbe(m) {
       renderProbe.text = ta.value; renderProbe.app = app.value;
       if (!ta.value.trim()) { out.replaceChildren(el("p", { class: "empty" }, "Наберите слова — увидите, что с ними сделает программа.")); return; }
       try {
-        // Проверяем с несохранёнными настройками: сначала временно не сохраняем — сервер берёт сохранённые.
+        const seq = (run.seq = (run.seq || 0) + 1);
+        if (!out.querySelector(".cap")) out.replaceChildren(el("p", { class: "empty" }, "Проверяю…"));
         const res = await api("/api/analyze", { text: ta.value, app: app.value });
+        if (seq !== run.seq) return; // пришёл ответ на устаревший текст
         out.replaceChildren(...res.map(r => {
           const f = r.final;
           if (r.error) return el("div", { class: "cap" }, el("div", { class: "from" }, r.word), el("div", { class: "why" }, r.error));
           const target = r.typed_in === "en" ? "ru" : "en";
           return el("div", { class: "cap" + (f.switch ? " sw-" + target : "") },
             el("div", { class: "from" }, r.word + "  ·  " + r.typed_in.toUpperCase()),
-            el("div", { class: "to" }, f.switch ? f.alt : r.word),
-            el("div", { class: "why" }, (f.switch ? "Исправится: " : "Останется: ") + f.reason +
+            el("div", { class: "to" }, f.switch ? f.alt : (r.typo && r.typo.applied ? r.typo.best : r.word)),
+            el("div", { class: "why" }, (f.switch ? "Раскладка исправится: " : "Раскладка верная: ") + f.reason +
               (r.early ? `. Посреди слова переключится после ${r.early_at}-й буквы` : "")),
-            el("div", { class: "nums" }, `буквы ${f.cur_score.toFixed(2)} → ${f.alt_score.toFixed(2)}, частота ${f.cur_zipf || "—"} → ${f.alt_zipf || "—"}`));
+            el("div", { class: "nums" }, `буквы ${f.cur_score.toFixed(2)} → ${f.alt_score.toFixed(2)}, частота ${f.cur_zipf || "—"} → ${f.alt_zipf || "—"}`),
+            r.typo ? el("div", { class: "why typo" }, r.typo.applied ? `Опечатка: исправится на «${r.typo.best}»` : (r.typo.best ? `Опечатка? Подсказка «${r.typo.best}», само не исправится: ${r.typo.reason}` : "Опечатка? Похожих слов нет"),
+              r.typo.candidates && r.typo.candidates.length > 1 ? el("div", { class: "nums" }, "варианты: " + r.typo.candidates.join(", ")) : null) : null,
+            r.completions && r.completions.length ? el("div", { class: "nums" }, "подсказки на «" + [...r.word].slice(0, (cfg.defaults.predict_min_prefix || 2) + 1).join("") + "»: " + r.completions.join(", ")) : null);
         }));
       } catch (e) { out.replaceChildren(el("p", { class: "empty" }, e.message)); }
     }, 200);
@@ -591,7 +673,7 @@ function renderProbe(m) {
   ta.value = renderProbe.text || "";
   ta.addEventListener("input", run); app.addEventListener("input", run);
   m.append(el("h2", {}, "Проверка"),
-    el("p", { class: "lead" }, "Наберите текст как есть — программа покажет, что исправит и почему. Проверка идёт по сохранённым настройкам, так что после изменения порогов сначала сохраните."),
+    el("p", { class: "lead" }, "Наберите текст как есть — программа покажет, что исправит (раскладку и опечатки), какие подскажет варианты и почему. Проверка идёт по сохранённым настройкам, так что после изменения порогов сначала сохраните."),
     el("datalist", { id: "recent-apps2" }, (S.apps || []).map(a => el("option", { value: a }))),
     el("div", { class: "group probe" },
       el("div", { class: "row wide" }, el("label", { for: "probe" }, "Текст"), ta),

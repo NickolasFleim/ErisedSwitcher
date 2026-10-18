@@ -10,12 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"erised/internal/keymap"
 )
 
-//go:embed data/ru.txt.gz data/en.txt.gz
+//go:embed data/ru.txt.gz data/en.txt.gz data/ru.known data/en.known
 var dataFS embed.FS
 
 // Model — словарь одного языка и триграммная модель букв.
@@ -26,12 +27,26 @@ type Model struct {
 	tri    map[string]float32 // log10 P(c | две предыдущие)
 	bi     map[string]float32 // log10 P(c | предыдущая)
 	floor  float32
+
+	sortedZ []float32 // zipf слов в порядке sorted (для быстрого дополнения)
+
+	simOnce   sync.Once
+	simReady  atomic.Bool
+	known     []uint64 // фильтр Блума: все встречавшиеся формы слов
+	knownBits uint64
+	knownK    int
+	simKeys   []uint64 // хеши «удалений» (SymSpell), отсортированы
+	simIDs    []int32  // индекс слова в sorted для каждого хеша
 }
 
 var (
 	once   sync.Once
 	models [2]*Model
+	ready  atomic.Bool
 )
+
+// Ready — словари уже загружены (до этого поток перехвата клавиш не должен их ждать).
+func Ready() bool { return ready.Load() }
 
 // Get возвращает модель языка (загружается один раз при первом обращении).
 func Get(l keymap.Lang) *Model {
@@ -55,6 +70,7 @@ func load() {
 		}(l)
 	}
 	wg.Wait()
+	ready.Store(true)
 }
 
 func loadModel(l keymap.Lang) *Model {
@@ -86,7 +102,12 @@ func loadModel(l keymap.Lang) *Model {
 		m.sorted = append(m.sorted, w)
 	}
 	sort.Strings(m.sorted)
+	m.sortedZ = make([]float32, len(m.sorted))
+	for i, w := range m.sorted {
+		m.sortedZ[i] = m.words[w]
+	}
 	m.train()
+	m.loadKnown()
 	return m
 }
 

@@ -10,13 +10,15 @@ import (
 	"erised/internal/config"
 	"erised/internal/engine"
 	"erised/internal/keymap"
+	"erised/internal/predict"
 	"erised/internal/webui"
 	"erised/internal/words"
 )
 
 type host struct {
-	cfg *config.Config
-	st  *words.Store
+	cfg  *config.Config
+	st   *words.Store
+	pred *predict.Predictor
 }
 
 func (h *host) Config() *config.Config             { return h.cfg }
@@ -33,7 +35,14 @@ func (h *host) ClearLog() {}
 func (h *host) RecentApps() []string {
 	return []string{"windowsterminal.exe", "telegram.exe", "chrome.exe"}
 }
-func (h *host) Action(string) error { return nil }
+func (h *host) Action(string) error           { return nil }
+func (h *host) Predictor() *predict.Predictor { return h.pred }
+func (h *host) HistoryStats() predict.Stats   { return h.pred.Hist.Stats(200) }
+func (h *host) HistoryClear() error           { h.pred.Hist.Clear(); return nil }
+func (h *host) HistoryForget(l, p, n string) error {
+	h.pred.Hist.Forget(keymap.ParseLang(l), p, n)
+	return nil
+}
 
 func main() {
 	st := words.New(filepath.Join(os.TempDir(), "w.json"))
@@ -44,7 +53,13 @@ func main() {
 	}
 	cfg := config.Default()
 	cfg.LogDecisions = true
-	s, err := webui.Start(&host{cfg, st}, 0)
+	hist := predict.NewHistory(filepath.Join(os.TempDir(), "typing.json"))
+	for i := 0; i < 5; i++ {
+		hist.Add(keymap.RU, "доброе", "утро")
+		hist.Add(keymap.RU, "спасибо", "большое")
+		hist.Add(keymap.EN, "thank", "you")
+	}
+	s, err := webui.Start(&host{cfg, st, &predict.Predictor{Hist: hist, Store: st}}, 0)
 	if err != nil {
 		panic(err)
 	}

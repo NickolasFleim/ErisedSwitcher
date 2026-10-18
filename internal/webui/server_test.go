@@ -10,6 +10,7 @@ import (
 
 	"erised/internal/config"
 	"erised/internal/engine"
+	"erised/internal/predict"
 	"erised/internal/words"
 )
 
@@ -27,6 +28,10 @@ func (f *fakeHost) Log() []engine.LogEntry             { return nil }
 func (f *fakeHost) ClearLog()                          {}
 func (f *fakeHost) RecentApps() []string               { return []string{"notepad.exe"} }
 func (f *fakeHost) Action(string) error                { return nil }
+func (f *fakeHost) Predictor() *predict.Predictor      { return &predict.Predictor{Store: f.st} }
+func (f *fakeHost) HistoryStats() predict.Stats        { return predict.Stats{} }
+func (f *fakeHost) HistoryClear() error                { return nil }
+func (f *fakeHost) HistoryForget(_, _, _ string) error { return nil }
 
 func TestServer(t *testing.T) {
 	h := &fakeHost{cfg: config.Default(), st: words.New(filepath.Join(t.TempDir(), "w.json"))}

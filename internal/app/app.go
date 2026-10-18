@@ -22,6 +22,7 @@ import (
 	"erised/internal/engine"
 	"erised/internal/keymap"
 	"erised/internal/lang"
+	"erised/internal/predict"
 	"erised/internal/settingswin"
 	"erised/internal/trayicon"
 	"erised/internal/webui"
@@ -30,7 +31,7 @@ import (
 )
 
 // Version — версия программы.
-const Version = "1.1.0"
+const Version = "1.2.0"
 
 // AppName — название программы.
 const AppName = "Erised Switcher"
@@ -107,6 +108,12 @@ type App struct {
 	comboMods    int    // для отслеживания Alt+Shift / Ctrl+Shift (режим «tracked»)
 	mouseDownPt  win.POINT
 	mouseDownT   uint32
+
+	// Подсказки.
+	hist        *predict.History
+	pred        *predict.Predictor
+	popup       *win.Popup
+	popupWindow atomic.Uint64 // окно, для которого показана полоска
 
 	// Очередь исправлений.
 	jobs      chan job
@@ -192,6 +199,7 @@ func Run() int {
 	go lang.Preload()
 	a.eng = engine.New(cfg, st)
 	a.eng.SetLogger(a.addLog)
+	a.initPredict()
 	a.findLayouts()
 
 	a.hwnd = win.CreateMessageWindow(className, syscallCallback(a.wndProc))
@@ -240,6 +248,9 @@ func Run() int {
 	}
 	if err := a.store.SaveIfDirty(); err != nil {
 		log.Printf("сохранение слов: %v", err)
+	}
+	if a.hist != nil {
+		_ = a.hist.SaveIfDirty()
 	}
 	log.Printf("Erised Switcher завершена")
 	return 0
@@ -374,6 +385,9 @@ func (a *App) onKey(ev win.KeyHookEvent) bool {
 		kev.Caps = !kev.Caps
 	}
 	res := a.eng.HandleKey(kev, ctx)
+	if res.SuggestChanged {
+		a.pushSuggestions(&info)
+	}
 	if len(res.Actions) > 0 {
 		a.busyMu.Lock()
 		a.busy, a.busySince = true, time.Now()
@@ -396,6 +410,12 @@ func (a *App) onMouse(msg uint32, pt win.POINT, t uint32) {
 	near := func(p, q win.POINT, d int32) bool {
 		dx, dy := p.X-q.X, p.Y-q.Y
 		return dx*dx+dy*dy <= d*d
+	}
+	if a.popup != nil && a.popup.Contains(pt) {
+		return // щелчок по полоске подсказок: набранное слово не сбрасываем
+	}
+	if a.popup != nil && msg != win.WM_LBUTTONUP {
+		a.popup.Hide()
 	}
 	switch msg {
 	case win.WM_LBUTTONDOWN:
@@ -784,6 +804,11 @@ func (a *App) checkFiles() {
 		a.lastSave = time.Now()
 		a.mu.Unlock()
 		_ = a.SaveWords()
+		if a.hist != nil {
+			if err := a.hist.SaveIfDirty(); err != nil {
+				log.Printf("typing.json: %v", err)
+			}
+		}
 	}
 }
 
@@ -856,6 +881,7 @@ func (a *App) wndProc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		switch w {
 		case timerIcon:
 			a.refreshIcon(false)
+			a.checkPopup()
 		case timerFiles:
 			a.checkFiles()
 		case timerRehook:

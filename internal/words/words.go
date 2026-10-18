@@ -450,3 +450,21 @@ func (s *Store) SaveIfDirty() error {
 
 // Path — путь к файлу.
 func (s *Store) Path() string { return s.path }
+
+// EachUserWord вызывает f для каждого вашего слова языка l (свои и собранные, без исключений),
+// начинающегося с prefix. f возвращает false, чтобы остановиться.
+func (s *Store) EachUserWord(l keymap.Lang, prefix string, f func(w string) bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ls := l.String()
+	for _, w := range s.d.User[ls] {
+		if strings.HasPrefix(w, prefix) && !f(w) {
+			return
+		}
+	}
+	for _, e := range s.d.Learned {
+		if e.Kind != KindException && e.Lang == ls && strings.HasPrefix(e.Word, prefix) && !f(e.Word) {
+			return
+		}
+	}
+}

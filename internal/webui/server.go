@@ -14,6 +14,7 @@ import (
 
 	"erised/internal/config"
 	"erised/internal/engine"
+	"erised/internal/predict"
 	"erised/internal/words"
 )
 
@@ -31,6 +32,10 @@ type Host interface {
 	ClearLog()
 	RecentApps() []string
 	Action(name string) error
+	Predictor() *predict.Predictor
+	HistoryStats() predict.Stats
+	HistoryClear() error
+	HistoryForget(lang, prev, next string) error
 }
 
 // Server — HTTP-сервер настроек.
@@ -61,6 +66,7 @@ func Start(host Host, port int) (*Server, error) {
 	mux.HandleFunc("/api/analyze", s.api(s.analyze))
 	mux.HandleFunc("/api/log", s.api(s.log))
 	mux.HandleFunc("/api/action", s.api(s.action))
+	mux.HandleFunc("/api/history", s.api(s.history))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go s.srv.Serve(ln)
 	return s, nil
@@ -188,7 +194,7 @@ func (s *Server) analyze(r *http.Request) (any, error) {
 	if len(q.Text) > 4000 {
 		q.Text = q.Text[:4000]
 	}
-	return engine.Analyze(q.Text, q.App, s.host.Config(), s.host.Words()), nil
+	return engine.Analyze(q.Text, q.App, s.host.Config(), s.host.Words(), s.host.Predictor()), nil
 }
 
 func (s *Server) log(r *http.Request) (any, error) {
@@ -220,3 +226,30 @@ type constError string
 func (e constError) Error() string { return string(e) }
 
 const errMethod = constError("нужен POST")
+
+func (s *Server) history(r *http.Request) (any, error) {
+	if r.Method == http.MethodPost {
+		var q struct {
+			Op   string `json:"op"` // clear | forget
+			Lang string `json:"lang"`
+			Prev string `json:"prev"`
+			Next string `json:"next"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			return nil, err
+		}
+		var err error
+		switch q.Op {
+		case "clear":
+			err = s.host.HistoryClear()
+		case "forget":
+			err = s.host.HistoryForget(q.Lang, q.Prev, q.Next)
+		default:
+			return nil, constError("неизвестная операция")
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return s.host.HistoryStats(), nil
+}

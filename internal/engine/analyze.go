@@ -5,6 +5,8 @@ import (
 
 	"erised/internal/config"
 	"erised/internal/keymap"
+	"erised/internal/lang"
+	"erised/internal/predict"
 	"erised/internal/words"
 )
 
@@ -16,14 +18,33 @@ type AnalyzeResult struct {
 	Early   *Verdict `json:"early,omitempty"` // на какой букве сработало бы «на лету»
 	EarlyAt int      `json:"early_at,omitempty"`
 	Error   string   `json:"error,omitempty"`
+	// Исправление опечатки (если раскладка верная).
+	Typo *TypoResult `json:"typo,omitempty"`
+	// Что было бы в полоске подсказок, если набрать начало этого слова.
+	Completions []string `json:"completions,omitempty"`
+}
+
+// TypoResult — что сделало бы исправление опечаток.
+type TypoResult struct {
+	Applied    bool     `json:"applied"` // исправит само при пробеле
+	Best       string   `json:"best"`
+	Reason     string   `json:"reason"`
+	Candidates []string `json:"candidates"`
+	Dist       float64  `json:"dist"`
 }
 
 // Analyze показывает, что программа сделала бы с каждым словом текста,
 // если бы оно было набрано так, как написано, в окне процесса process.
-func Analyze(text, process string, cfg *config.Config, st *words.Store) []AnalyzeResult {
+func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *predict.Predictor) []AnalyzeResult {
 	r := cfg.Resolve(process, "", "")
+	// Временный движок с теми же настройками — чтобы проверка шла тем же кодом, что и при наборе.
+	tmp := &Engine{cfg: cfg, store: st, pred: pred, forced: keymap.Unknown}
 	var out []AnalyzeResult
-	for _, w := range strings.Fields(text) {
+	lang.Preload()
+	for _, l := range []keymap.Lang{keymap.RU, keymap.EN} {
+		lang.Get(l).PrepareSimilar() // здесь можно и подождать
+	}
+	for wi, w := range strings.Fields(text) {
 		res := AnalyzeResult{Word: w}
 		l := keymap.DetectTextLang(w)
 		if l == keymap.Unknown {
@@ -50,6 +71,34 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store) []Analyz
 					if v.Switch {
 						res.Early, res.EarlyAt = &v, i
 						break
+					}
+				}
+			}
+			if !res.Final.Switch && pred != nil && r.Autocorrect != "off" {
+				tmp.hist = nil
+				if wi > 0 {
+					tmp.hist = []token{{lang: l, keys: []keymap.Key{{VK: 'X'}}, trail: keymap.VK_SPACE}} // «не начало предложения»
+				}
+				t := token{keys: keys, lang: l}
+				if low, tz, ok := tmp.canAutocorrect(&t, &r); ok {
+					cands := pred.Correct(l, low, "", 3)
+					d := predict.DecideAuto(low, cands, tmp.autoOptions(&r, low, l, tz))
+					tr := &TypoResult{Applied: d.OK && r.Autocorrect == "auto", Reason: d.Reason, Dist: d.Best.Dist}
+					if d.Best.Word != "" {
+						tr.Best = predict.MatchCase(w, d.Best.Word)
+					}
+					for _, c := range cands {
+						tr.Candidates = append(tr.Candidates, c.Word)
+					}
+					res.Typo = tr
+				}
+			}
+			if pred != nil && r.Predict {
+				lw := strings.ToLower(w)
+				rs := []rune(lw)
+				if n := r.PredictMinPrefix; len(rs) > n {
+					for _, c := range pred.Complete(l, string(rs[:n+1]), "", cfg.Suggest.Count) {
+						res.Completions = append(res.Completions, c.Word)
 					}
 				}
 			}

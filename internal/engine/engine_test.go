@@ -7,6 +7,7 @@ import (
 
 	"erised/internal/config"
 	"erised/internal/keymap"
+	"erised/internal/lang"
 	"erised/internal/words"
 )
 
@@ -26,6 +27,10 @@ type sim struct {
 }
 
 func newSim(t *testing.T, app string, start keymap.Lang) *sim {
+	lang.Preload()
+	for _, l := range []keymap.Lang{keymap.RU, keymap.EN} {
+		lang.Get(l).PrepareSimilar()
+	}
 	cfg := config.Default()
 	st := words.New(filepath.Join(t.TempDir(), "words.json"))
 	return &sim{t: t, e: New(cfg, st), st: st, cfg: cfg, layout: start, app: app}
@@ -378,7 +383,7 @@ func TestConvertText(t *testing.T) {
 
 func TestAnalyze(t *testing.T) {
 	cfg := config.Default()
-	res := Analyze("ghbdtn привет", "notepad.exe", cfg, nil)
+	res := Analyze("ghbdtn привет", "notepad.exe", cfg, nil, nil)
 	if len(res) != 2 || !res[0].Final.Switch || res[1].Final.Switch {
 		t.Fatalf("%+v", res)
 	}
