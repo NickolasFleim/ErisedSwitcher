@@ -110,3 +110,40 @@ func RegKeyExistsHKCU(path string) bool {
 
 // NotifyShell — сообщить проводнику, что ярлыки изменились.
 func NotifyShell() { pSHChangeNotify.Call(0x08000000 /*SHCNE_ASSOCCHANGED*/, 0, 0, 0) }
+
+var (
+	pSHBrowseForFolderW   = shell32.NewProc("SHBrowseForFolderW")
+	pSHGetPathFromIDListW = shell32.NewProc("SHGetPathFromIDListW")
+	pCoTaskMemFree        = ole32.NewProc("CoTaskMemFree")
+)
+
+// BrowseFolder показывает окно выбора папки. Пустая строка — отмена.
+func BrowseFolder(owner uintptr, title string) string {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	pCoInitializeEx.Call(0, 2)
+	pTitle := UTF16(title)
+	bi := struct {
+		Owner       uintptr
+		Root        uintptr
+		DisplayName *uint16
+		Title       *uint16
+		Flags       uint32
+		Callback    uintptr
+		LParam      uintptr
+		Image       int32
+	}{Owner: owner, Title: pTitle, Flags: 0x0001 | 0x0040 /*RETURNONLYFSDIRS | NEWDIALOGSTYLE*/}
+	var name [260]uint16
+	bi.DisplayName = &name[0]
+	pidl, _, _ := pSHBrowseForFolderW.Call(uintptr(unsafe.Pointer(&bi)))
+	runtime.KeepAlive(pTitle)
+	if pidl == 0 {
+		return ""
+	}
+	defer pCoTaskMemFree.Call(pidl)
+	var path [1024]uint16
+	if r, _, _ := pSHGetPathFromIDListW.Call(pidl, uintptr(unsafe.Pointer(&path[0]))); r == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(path[:])
+}

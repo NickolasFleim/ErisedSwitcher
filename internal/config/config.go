@@ -224,6 +224,10 @@ type Config struct {
 	UIMode string `json:"ui_mode"`
 	// Установку уже предлагали (больше не спрашивать).
 	InstallPrompted bool `json:"install_prompted"`
+	// Мастер первого запуска пройден.
+	WizardDone bool `json:"wizard_done"`
+	// Папка для резервной копии настроек (например, в OneDrive) — пусто, если не нужна.
+	BackupDir string `json:"backup_dir"`
 	// Порт окна настроек (0 — случайный).
 	UIPort int `json:"ui_port"`
 	// Показывать раскладку в трее.
@@ -683,6 +687,7 @@ func Load(path string) (*Config, error) {
 		return c, err
 	}
 	b = stripBOM(b)
+	c.WizardDone = true // у тех, кто уже пользовался программой, мастер не показываем
 	if err := json.Unmarshal(b, c); err != nil {
 		return Default(), fmt.Errorf("config.json: %w", err)
 	}

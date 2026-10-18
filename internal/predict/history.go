@@ -234,3 +234,41 @@ func (h *History) SaveIfDirty() error {
 	}
 	return config.WriteAtomic(h.path, b)
 }
+
+// MarshalJSON — история целиком (для экспорта настроек).
+func (h *History) MarshalJSON() ([]byte, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return json.Marshal(historyFile{Version: 1, Uni: h.uni, Bi: h.bi})
+}
+
+// Merge добавляет историю из экспорта к текущей (счётчики складываются).
+func (h *History) Merge(b []byte) error {
+	var f historyFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for k, c := range f.Uni {
+		h.uni[k] += c
+	}
+	for k, m := range f.Bi {
+		dst := h.bi[k]
+		if dst == nil {
+			dst = map[string]uint32{}
+			h.bi[k] = dst
+		}
+		for w, c := range m {
+			if dst[w] == 0 {
+				h.pairs++
+			}
+			dst[w] += c
+		}
+	}
+	h.dirty = true
+	if h.MaxPairs > 0 && h.pairs > h.MaxPairs {
+		h.pruneLocked()
+	}
+	return nil
+}

@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -44,6 +45,11 @@ type Host interface {
 	// Установка в систему.
 	InstallStatus() map[string]any
 	InstallAction(op string) error
+	// Перенос настроек.
+	ExportSettings(withHistory bool) ([]byte, error)
+	ImportSettings(b []byte) error
+	BackupNow() error
+	PickFolder() string
 }
 
 // Server — HTTP-сервер настроек.
@@ -78,6 +84,9 @@ func Start(host Host, port int) (*Server, error) {
 	mux.HandleFunc("/api/update", s.api(s.update))
 	mux.HandleFunc("/api/diag", s.api(s.diag))
 	mux.HandleFunc("/api/install", s.api(s.install))
+	mux.HandleFunc("/api/export", s.export)
+	mux.HandleFunc("/api/import", s.api(s.importSettings))
+	mux.HandleFunc("/api/backup", s.api(s.backup))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go s.srv.Serve(ln)
 	return s, nil
@@ -308,4 +317,51 @@ func (s *Server) install(r *http.Request) (any, error) {
 		}
 	}
 	return s.host.InstallStatus(), nil
+}
+
+// export отдаёт файл настроек на скачивание.
+func (s *Server) export(w http.ResponseWriter, r *http.Request) {
+	if !s.allowed(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	b, err := s.host.ExportSettings(r.URL.Query().Get("history") == "1")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="erised-settings.json"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(b)
+}
+
+func (s *Server) importSettings(r *http.Request) (any, error) {
+	if r.Method != http.MethodPost {
+		return nil, errMethod
+	}
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.host.ImportSettings(b); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func (s *Server) backup(r *http.Request) (any, error) {
+	var q struct {
+		Op string `json:"op"` // now | pick
+	}
+	if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+		return nil, err
+	}
+	switch q.Op {
+	case "now":
+		return map[string]any{"ok": true}, s.host.BackupNow()
+	case "pick":
+		return map[string]any{"dir": s.host.PickFolder()}, nil
+	}
+	return nil, constError("неизвестная операция")
 }

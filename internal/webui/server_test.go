@@ -114,3 +114,10 @@ func (f *fakeHost) DiagnosticsAction(string) error { return nil }
 
 func (f *fakeHost) InstallStatus() map[string]any { return map[string]any{"installed": false} }
 func (f *fakeHost) InstallAction(string) error    { return nil }
+
+func (f *fakeHost) ExportSettings(bool) ([]byte, error) {
+	return []byte(`{"format":"erised-switcher-settings"}`), nil
+}
+func (f *fakeHost) ImportSettings([]byte) error { return nil }
+func (f *fakeHost) BackupNow() error            { return nil }
+func (f *fakeHost) PickFolder() string          { return "" }

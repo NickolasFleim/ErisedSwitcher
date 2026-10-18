@@ -86,6 +86,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--en); }
 .inherit { color: var(--muted); font-style: italic; }
 
 .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); border-bottom: 2px solid var(--cap-edge); background: var(--cap); cursor: pointer; }
+a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .btn:active { transform: translateY(1px); border-bottom-width: 1px; }
 .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .btn.danger { color: var(--ru); }
@@ -146,6 +147,23 @@ td .btn { margin-right: 4px; }
 .recording { box-shadow: 0 0 0 2px var(--ru) inset; }
 .hk { display: flex; gap: 6px; }
 .note { border-left: 3px solid var(--warn); padding: 6px 12px; color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+
+/* Мастер первого запуска */
+.modal-back { position: fixed; inset: 0; background: rgba(10, 14, 22, .55); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 8; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 24px 28px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modal h2 { margin: 0 0 6px; }
+.modal .steps { display: flex; gap: 6px; margin: 0 0 18px; }
+.modal .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+.modal .steps i.on { background: var(--gold); }
+.modal .row { grid-template-columns: minmax(0, 1fr) 220px; }
+.modal .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; align-items: center; }
+.modal .foot .skip { margin-right: auto; }
+.choice { display: grid; gap: 8px; margin: 8px 0 4px; }
+.choice label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font-weight: 400; }
+.choice label:has(input:checked) { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.choice input { margin-top: 3px; accent-color: var(--en); }
+.choice b { display: block; font-weight: 600; }
+.choice small { color: var(--muted); }
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
@@ -313,6 +331,7 @@ async function load() {
   saved = JSON.stringify(cfg);
   renderStatus();
   render();
+  if (!cfg.wizard_done) showWizard();
 }
 
 function renderStatus() {
@@ -458,12 +477,116 @@ function renderInstall() {
   return el("div", { class: "group" }, el("h3", {}, "Установка"), box);
 }
 
+function renderTransfer() {
+  const orig = JSON.parse(saved);
+  let withHist = false;
+  const file = el("input", { type: "file", accept: ".json,application/json", style: "display:none", onchange: async (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (data.format !== "erised-switcher-settings") throw new Error("Это не файл настроек Erised Switcher.");
+      if (!confirm("Заменить текущие настройки и словарь настройками из файла «" + f.name + "»?" + (data.history ? " История набора будет добавлена к вашей." : ""))) return;
+      await api("/api/import", data);
+      W = null; await load(); toast("Настройки перенесены");
+    } catch (err) { toast(err.message.startsWith("Unexpected") ? "Файл повреждён или это не JSON." : err.message, true); }
+  } });
+  const exp = el("a", { class: "btn", download: "erised-settings.json", href: "#", onclick: (e) => {
+    e.currentTarget.href = "/api/export?t=" + encodeURIComponent(token) + (withHist ? "&history=1" : "");
+  } }, "Сохранить в файл…");
+  const dirRow = field({ t: "text", l: "Папка для резервной копии", h: "Например, папка в OneDrive или на флешке. Программа сама сохраняет туда erised-settings.json при каждом изменении настроек и словаря, а на другом компьютере его можно загрузить кнопкой «Загрузить из файла». Пусто — не сохранять." }, cfg, "backup_dir", { orig: orig.backup_dir });
+  const dirInput = dirRow.querySelector("input");
+  return el("div", { class: "group" },
+    el("h3", {}, "Перенос и резервная копия"),
+    el("div", { class: "row" },
+      el("div", {}, el("label", {}, "Перенести на другой компьютер"),
+        el("div", { class: "help" }, "Настройки, правила приложений, свои и собранные слова — одним файлом."),
+        el("label", { style: "font-weight:400;display:flex;gap:8px;align-items:center;margin-top:6px" },
+          el("input", { type: "checkbox", onchange: e => withHist = e.target.checked }), "Вместе с историей набора (подсказки следующего слова)")),
+      el("div", { class: "actions" }, exp, el("button", { class: "btn", onclick: () => file.click() }, "Загрузить из файла…"), file)),
+    dirRow,
+    el("div", { class: "actions", style: "padding:0 0 14px" },
+      el("button", { class: "btn", onclick: async () => {
+        try { const r = await api("/api/backup", { op: "pick" }); if (r.dir) { cfg.backup_dir = r.dir; dirInput.value = r.dir; markDirty(); dirRow.classList.toggle("changed", r.dir !== orig.backup_dir); } }
+        catch (e) { toast(e.message, true); } } }, "Выбрать папку…"),
+      el("button", { class: "btn", onclick: async () => {
+        if (cfg.backup_dir !== orig.backup_dir) { toast("Сначала сохраните настройки с новой папкой", true); return; }
+        try { await api("/api/backup", { op: "now" }); toast("Копия сохранена"); } catch (e) { toast(e.message, true); } } }, "Сохранить копию сейчас")));
+}
+
+// ---------- Мастер первого запуска ----------
+function showWizard() {
+  if (document.querySelector(".modal-back")) return;
+  const w = structuredClone(cfg);
+  let step = 0;
+  const back = el("div", { class: "modal-back" });
+  const box = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "wz-title" });
+  back.append(box);
+  const radio = (name, value, cur, set, title, sub) => el("label", {},
+    el("input", { type: "radio", name, value, checked: cur === value, onchange: () => set(value) }), el("span", {}, el("b", {}, title), sub ? el("small", {}, sub) : null));
+  const check = (cur, set, title, sub) => el("label", {},
+    el("input", { type: "checkbox", checked: !!cur, onchange: e => set(e.target.checked) }), el("span", {}, el("b", {}, title), sub ? el("small", {}, sub) : null));
+  const finish = async (apply) => {
+    if (apply) {
+      cfg.languages = w.languages; cfg.hotkeys.convert_word = w.hotkeys.convert_word;
+      cfg.defaults.autocorrect = w.defaults.autocorrect; cfg.defaults.predict = w.defaults.predict;
+      cfg.autostart = w.autostart; cfg.update.check = w.update.check; cfg.update.auto = w.update.auto && w.update.check;
+    }
+    cfg.wizard_done = true;
+    if (await saveConfig()) back.remove();
+  };
+  const steps = [
+    () => [el("h2", { id: "wz-title" }, "Добро пожаловать в Erised Switcher"),
+      el("p", { class: "lead" }, "Программа исправляет текст, набранный не в той раскладке (ghbdtn → привет), опечатки и подсказывает слова — в любой программе, в том числе в терминале. Три коротких вопроса, остальное можно поменять потом."),
+      el("h3", {}, "Между какими языками переключать?"),
+      el("div", { class: "choice" },
+        radio("wz-l", "auto", w.languages, v => w.languages = v, "Как в Windows", "По раскладкам, которые у вас установлены"),
+        radio("wz-l", "en,ru", w.languages, v => w.languages = v, "Английский и русский"),
+        radio("wz-l", "en,uk", w.languages, v => w.languages = v, "Английский и украинский"),
+        radio("wz-l", "en,ru,uk", w.languages, v => w.languages = v, "Английский, русский и украинский"))],
+    () => [el("h2", { id: "wz-title" }, "Исправления"),
+      el("h3", {}, "Клавиша, чтобы исправить слово или выделенный текст вручную"),
+      el("div", { class: "choice" },
+        radio("wz-h", "DoubleShift", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Shift дважды", "Как в Caramba и Punto"),
+        radio("wz-h", "Pause", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Pause/Break"),
+        radio("wz-h", "DoubleRCtrl", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Правый Ctrl дважды")),
+      el("h3", {}, "Опечатки"),
+      el("div", { class: "choice" },
+        radio("wz-a", "auto", w.defaults.autocorrect, v => w.defaults.autocorrect = v, "Исправлять при пробеле", "Как на телефоне. Backspace сразу после — вернуть как было"),
+        radio("wz-a", "suggest", w.defaults.autocorrect, v => w.defaults.autocorrect = v, "Только подсказывать", "Правильный вариант будет первым в полоске, Tab — принять"),
+        radio("wz-a", "off", w.defaults.autocorrect, v => w.defaults.autocorrect = v, "Не трогать")),
+      el("div", { class: "choice" },
+        check(w.defaults.predict, v => w.defaults.predict = v, "Показывать полоску с вариантами слова", "Tab или Ctrl+1/2/3 — принять"))],
+    () => [el("h2", { id: "wz-title" }, "Запуск и обновления"),
+      el("div", { class: "choice" },
+        check(w.autostart, v => w.autostart = v, "Запускать вместе с Windows"),
+        check(w.update.check, v => w.update.check = v, "Проверять обновления", "Раз в сутки, на странице проекта на GitHub"),
+        check(w.update.auto, v => w.update.auto = v, "Устанавливать обновления самостоятельно", "Когда вы ничего не печатаете; файл проверяется по контрольной сумме")),
+      el("p", { class: "help" }, "Значок программы — в области уведомлений рядом с часами. Оттуда открываются эти настройки.")],
+  ];
+  const draw = () => {
+    box.replaceChildren(
+      el("div", { class: "steps" }, steps.map((_, i) => el("i", { class: i <= step ? "on" : "" }))),
+      ...steps[step](),
+      el("div", { class: "foot" },
+        el("button", { class: "btn skip", onclick: () => finish(false) }, "Пропустить"),
+        step > 0 ? el("button", { class: "btn", onclick: () => { step--; draw(); } }, "Назад") : null,
+        step < steps.length - 1 ? el("button", { class: "btn primary", onclick: () => { step++; draw(); } }, "Далее")
+          : el("button", { class: "btn primary", onclick: () => finish(true) }, "Готово")));
+    const first = box.querySelector("input:checked, input, .btn.primary"); if (first) first.focus();
+  };
+  back.addEventListener("keydown", e => { if (e.key === "Escape") finish(false); });
+  draw();
+  document.body.append(back);
+}
+
 function renderGeneral(m) {
   const g = (k, t, l, h, o) => field({ k, t, l, h, o }, cfg, k, { orig: JSON.parse(saved)[k] });
   m.append(el("h2", {}, "Общие"),
     el("p", { class: "lead" }, "Erised Switcher следит за нажатыми клавишами, а не за текстом в окне, поэтому работает и в терминалах. Здесь — то, что относится ко всей программе."),
     renderUpdates(),
     renderInstall(),
+    renderTransfer(),
     el("div", { class: "group" },
       g("enabled", "bool", "Программа включена", "Горячие клавиши работают и в выключенном состоянии."),
       g("autostart", "bool", "Запускать вместе с Windows"),

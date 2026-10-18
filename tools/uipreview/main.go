@@ -82,3 +82,10 @@ func (h *host) InstallStatus() map[string]any {
 	return map[string]any{"installed": false, "this_copy": false, "managed": false, "install_dir": "%LOCALAPPDATA%\\Programs\\Erised Switcher", "exe": "%USERPROFILE%\\Downloads\\ErisedSwitcher.exe"}
 }
 func (h *host) InstallAction(string) error { return nil }
+
+func (h *host) ExportSettings(bool) ([]byte, error) {
+	return []byte(`{"format":"erised-switcher-settings"}`), nil
+}
+func (h *host) ImportSettings([]byte) error { return nil }
+func (h *host) BackupNow() error            { return nil }
+func (h *host) PickFolder() string          { return `C:\Users\you\OneDrive\Erised` }

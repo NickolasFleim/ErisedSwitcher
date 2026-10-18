@@ -122,6 +122,8 @@ type App struct {
 	upd             *updater // обновления
 	crash           *crashes
 	crashedLastTime bool
+	lastBackup      time.Time
+	lastBackupSum   [32]byte
 
 	// Очередь исправлений.
 	jobs      chan job
@@ -275,6 +277,10 @@ func Run() int {
 	}
 
 	a.startUpdater() // после приветствия: сообщение об обновлении важнее
+	if !a.cfg.Load().WizardDone {
+		// Первый запуск: открываем настройки — там мастер из трёх шагов.
+		time.AfterFunc(1500*time.Millisecond, func() { win.PostMessage(a.hwnd, wmShowUI, 0, 0) })
+	}
 
 	win.MessageLoop()
 
@@ -859,6 +865,9 @@ func (a *App) checkFiles() {
 			if err := a.hist.SaveIfDirty(); err != nil {
 				log.Printf("typing.json: %v", err)
 			}
+		}
+		if err := a.backupNow(false); err != nil {
+			log.Printf("резервная копия: %v", err)
 		}
 	}
 }
