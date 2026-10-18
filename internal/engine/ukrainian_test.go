@@ -132,3 +132,14 @@ func TestConvertTextThreeLanguages(t *testing.T) {
 		t.Fatalf("с английского — в основную кириллицу (UK): %q", got)
 	}
 }
+
+// Пример из README: ghbdsn → привіт, ghbdtn → привет.
+func TestReadmeUkrainianExample(t *testing.T) {
+	withLanguages(t, keymap.RU, keymap.EN, keymap.RU, keymap.UK)
+	s := newSimPred(t, "notepad.exe", keymap.EN)
+	s.typeAs("ghbdsn ", keymap.EN)
+	expect(t, s.text(), "привіт ")
+	s2 := newSimPred(t, "notepad.exe", keymap.EN)
+	s2.typeAs("ghbdtn ", keymap.EN)
+	expect(t, s2.text(), "привет ")
+}

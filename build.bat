@@ -1,5 +1,5 @@
 @echo off
-rem Сборка Erised Switcher. Нужен Go 1.22+ (https://go.dev/dl/). Зависимости — в папке vendor.
+rem Сборка Erised Switcher. Нужен Go 1.23+ (https://go.dev/dl/). Зависимости — в папке vendor.
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0"

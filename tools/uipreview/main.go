@@ -26,7 +26,7 @@ func (h *host) ApplyConfig(c *config.Config) error { h.cfg = c; return nil }
 func (h *host) Words() *words.Store                { return h.st }
 func (h *host) SaveWords() error                   { return nil }
 func (h *host) Status() map[string]any {
-	return map[string]any{"enabled": true, "admin": false, "layouts": "RU 04190419, EN 04090409", "dict": "149968 RU, 89934 EN слов", "data_dir": `C:\Users\you\AppData\Roaming\Smena`}
+	return map[string]any{"enabled": true, "admin": false, "version": "1.4.0", "layouts": "EN 00000409, RU 00000419, UA 00000422", "dict": "149968 RU, 87669 UA, 89934 EN слов", "data_dir": `%APPDATA%\Erised Switcher`}
 }
 func (h *host) Log() []engine.LogEntry {
 	return []engine.LogEntry{{Time: time.Now(), App: "windowsterminal.exe", Rule: "Терминалы", Event: "конец слова", V: engine.Verdict{Switch: true, Cur: "пше", Alt: "git", Reason: "второй вариант — слово из списка приложения"}}}
@@ -40,8 +40,8 @@ func (h *host) Predictor() *predict.Predictor { return h.pred }
 func (h *host) HistoryStats() predict.Stats   { return h.pred.Hist.Stats(200) }
 func (h *host) HistoryClear() error           { h.pred.Hist.Clear(); return nil }
 func (h *host) UpdateStatus() map[string]any {
-	return map[string]any{"current": "1.3.0", "status": "idle", "last_check": time.Now(),
-		"latest": map[string]any{"version": "1.4.0", "name": "Erised Switcher 1.4.0", "notes": "- Новое: пример заметок к выпуску\n- Исправлено: что-то важное", "url": "https://github.com/NickolasFleim/ErisedSwitcher/releases"}}
+	return map[string]any{"current": "1.4.0", "status": "idle", "last_check": time.Now(),
+		"latest": map[string]any{"version": "1.4.1", "name": "Erised Switcher 1.4.1", "notes": "- Новое: пример заметок к выпуску\n- Исправлено: что-то важное", "url": "https://github.com/NickolasFleim/ErisedSwitcher/releases"}}
 }
 func (h *host) UpdateAction(string) error { return nil }
 func (h *host) HistoryForget(l, p, n string) error {
@@ -58,6 +58,7 @@ func main() {
 	}
 	cfg := config.Default()
 	cfg.LogDecisions = true
+	cfg.WizardDone = true // мастер показывается вызовом showWizard() в странице
 	hist := predict.NewHistory(filepath.Join(os.TempDir(), "typing.json"))
 	for i := 0; i < 5; i++ {
 		hist.Add(keymap.RU, "доброе", "утро")
