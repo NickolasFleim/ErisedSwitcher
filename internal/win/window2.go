@@ -4,6 +4,7 @@ package win
 
 import (
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -76,4 +77,32 @@ func ShellRun(file, args string) bool {
 	r, _, _ := pShellExecuteW.Call(0, uintptr(unsafe.Pointer(UTF16("open"))), uintptr(unsafe.Pointer(UTF16(file))),
 		uintptr(unsafe.Pointer(UTF16(args))), 0, 1)
 	return r > 32
+}
+
+var (
+	pGetLastInputInfo    = user32.NewProc("GetLastInputInfo")
+	pGetTickCount        = kernel32.NewProc("GetTickCount")
+	pWaitForSingleObject = kernel32.NewProc("WaitForSingleObject")
+)
+
+// IdleFor — сколько времени не было нажатий и движений мыши.
+func IdleFor() time.Duration {
+	lii := struct{ Size, Time uint32 }{8, 0}
+	if r, _, _ := pGetLastInputInfo.Call(uintptr(unsafe.Pointer(&lii))); r == 0 {
+		return 0
+	}
+	now, _, _ := pGetTickCount.Call()
+	return time.Duration(uint32(now)-lii.Time) * time.Millisecond
+}
+
+// WaitProcessExit ждёт завершения процесса pid (не дольше timeout). true — завершился.
+func WaitProcessExit(pid int, timeout time.Duration) bool {
+	const synchronize = 0x00100000
+	h, _, _ := pOpenProcess.Call(synchronize, 0, uintptr(pid))
+	if h == 0 {
+		return true // процесса уже нет
+	}
+	defer pCloseHandle.Call(h)
+	r, _, _ := pWaitForSingleObject.Call(h, uintptr(timeout.Milliseconds()))
+	return r == 0 // WAIT_OBJECT_0
 }

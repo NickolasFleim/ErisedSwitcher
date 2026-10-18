@@ -32,6 +32,10 @@ func (f *fakeHost) Predictor() *predict.Predictor      { return &predict.Predict
 func (f *fakeHost) HistoryStats() predict.Stats        { return predict.Stats{} }
 func (f *fakeHost) HistoryClear() error                { return nil }
 func (f *fakeHost) HistoryForget(_, _, _ string) error { return nil }
+func (f *fakeHost) UpdateStatus() map[string]any {
+	return map[string]any{"current": "1.3.0", "status": "idle"}
+}
+func (f *fakeHost) UpdateAction(string) error { return nil }
 
 func TestServer(t *testing.T) {
 	h := &fakeHost{cfg: config.Default(), st: words.New(filepath.Join(t.TempDir(), "w.json"))}

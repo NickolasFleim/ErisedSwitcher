@@ -39,6 +39,11 @@ func (h *host) Action(string) error           { return nil }
 func (h *host) Predictor() *predict.Predictor { return h.pred }
 func (h *host) HistoryStats() predict.Stats   { return h.pred.Hist.Stats(200) }
 func (h *host) HistoryClear() error           { h.pred.Hist.Clear(); return nil }
+func (h *host) UpdateStatus() map[string]any {
+	return map[string]any{"current": "1.3.0", "status": "idle", "last_check": time.Now(),
+		"latest": map[string]any{"version": "1.4.0", "name": "Erised Switcher 1.4.0", "notes": "- Новое: пример заметок к выпуску\n- Исправлено: что-то важное", "url": "https://github.com/NickolasFleim/ErisedSwitcher/releases"}}
+}
+func (h *host) UpdateAction(string) error { return nil }
 func (h *host) HistoryForget(l, p, n string) error {
 	h.pred.Hist.Forget(keymap.ParseLang(l), p, n)
 	return nil

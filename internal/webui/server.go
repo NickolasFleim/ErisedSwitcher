@@ -36,6 +36,8 @@ type Host interface {
 	HistoryStats() predict.Stats
 	HistoryClear() error
 	HistoryForget(lang, prev, next string) error
+	UpdateStatus() map[string]any
+	UpdateAction(op string) error
 }
 
 // Server — HTTP-сервер настроек.
@@ -67,6 +69,7 @@ func Start(host Host, port int) (*Server, error) {
 	mux.HandleFunc("/api/log", s.api(s.log))
 	mux.HandleFunc("/api/action", s.api(s.action))
 	mux.HandleFunc("/api/history", s.api(s.history))
+	mux.HandleFunc("/api/update", s.api(s.update))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go s.srv.Serve(ln)
 	return s, nil
@@ -252,4 +255,19 @@ func (s *Server) history(r *http.Request) (any, error) {
 		}
 	}
 	return s.host.HistoryStats(), nil
+}
+
+func (s *Server) update(r *http.Request) (any, error) {
+	if r.Method == http.MethodPost {
+		var q struct {
+			Op string `json:"op"` // check | install | skip
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			return nil, err
+		}
+		if err := s.host.UpdateAction(q.Op); err != nil {
+			return nil, err
+		}
+	}
+	return s.host.UpdateStatus(), nil
 }

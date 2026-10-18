@@ -157,6 +157,22 @@ type Learn struct {
 	Enabled bool `json:"enabled"`
 }
 
+// Update — обновления с GitHub.
+type Update struct {
+	// Проверять, есть ли новая версия.
+	Check bool `json:"check"`
+	// Автообновление: скачивать и ставить самому (когда вы ничего не печатаете).
+	Auto bool `json:"auto"`
+	// Как часто проверять, часов.
+	IntervalHours int `json:"interval_hours"`
+	// Предлагать предварительные (бета) версии.
+	Prerelease bool `json:"prerelease"`
+	// Версия, которую вы решили пропустить.
+	Skipped string `json:"skipped"`
+	// Репозиторий на GitHub (владелец/название).
+	Repo string `json:"repo"`
+}
+
 // Suggest — полоска подсказок.
 type Suggest struct {
 	// Где показывать: "caret" — у курсора ввода, "mouse" — у указателя мыши,
@@ -212,6 +228,7 @@ type Config struct {
 	Autostart bool `json:"autostart"`
 
 	Suggest Suggest `json:"suggest"`
+	Update  Update  `json:"update"`
 
 	Defaults Rule      `json:"defaults"`
 	Apps     []AppRule `json:"apps"`
@@ -331,6 +348,12 @@ func Default() *Config {
 			Accept2:          "Ctrl+2",
 			Accept3:          "Ctrl+3",
 			Dismiss:          "Esc",
+		},
+		Update: Update{
+			Check:         true,
+			Auto:          true,
+			IntervalHours: 12,
+			Repo:          "NickolasFleim/ErisedSwitcher",
 		},
 		Suggest: Suggest{
 			Position:         "caret",
@@ -601,6 +624,10 @@ func (c *Config) Validate() []string {
 	}
 	errs = append(errs, c.hotkeyConflicts()...)
 	check(c.UIMode == "window" || c.UIMode == "browser", "Где открывать настройки: window или browser")
+	check(c.Update.IntervalHours >= 1 && c.Update.IntervalHours <= 720, "Проверять обновления: раз в 1–720 часов")
+	if parts := strings.Split(c.Update.Repo, "/"); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		errs = append(errs, "Репозиторий обновлений должен быть вида владелец/название")
+	}
 	sg := &c.Suggest
 	check(map[string]bool{"caret": true, "mouse": true, "bottom": true, "off": true}[sg.Position], "Положение подсказок: caret, mouse, bottom или off")
 	check(sg.Fallback == "mouse" || sg.Fallback == "bottom", "Если курсор не найден: mouse или bottom")

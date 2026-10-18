@@ -136,6 +136,8 @@ td .btn { margin-right: 4px; }
 .cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); }
 .cap .why { font-size: 12px; color: var(--muted); max-width: 240px; margin-top: 4px; }
 .cap .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+.update-status pre.notes { white-space: pre-wrap; font: 13px/1.5 inherit; font-family: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; margin: 6px 0; }
+.update-status a { color: var(--focus); }
 .cap .typo { color: var(--ink); border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 6px; }
 
 .log td { font-size: 13px; }
@@ -314,8 +316,9 @@ async function load() {
 
 function renderStatus() {
   const st = S.status || {};
-  $("#status").replaceChildren(
+  $("#status").replaceChildren(...[
     el("div", {}, "Состояние: ", el("b", {}, st.enabled ? "включено" : "выключено")),
+    el("div", {}, "Версия: ", el("b", {}, st.version || "")),
     st.admin === false ? el("div", {}, "Без прав администратора: в окнах, запущенных от администратора, не работает.") : null,
     el("div", {}, "Раскладки: ", el("b", {}, st.layouts || "—")),
     el("div", {}, "Словари: ", el("b", {}, st.dict || "")),
@@ -324,7 +327,7 @@ function renderStatus() {
       el("button", { class: "btn small", onclick: () => act(st.enabled ? "disable" : "enable") }, st.enabled ? "Выключить" : "Включить"),
       el("button", { class: "btn small", onclick: () => act("open_dir") }, "Открыть папку"),
       el("button", { class: "btn small", onclick: () => act("reload").then(load) }, "Перечитать файлы")),
-  );
+  ].filter(Boolean));
 }
 async function act(name) {
   try { const r = await api("/api/action", { name }); S.status = r.status; renderStatus(); } catch (e) { toast(e.message, true); }
@@ -397,10 +400,50 @@ function ruleForm(obj, opts) {
 }
 
 // ---------- Вкладки ----------
+function renderUpdates() {
+  const up = cfg.update, orig = JSON.parse(saved).update || {};
+  const f = (k, t, l, h) => field({ k, t, l, h }, up, k, { prefix: "up", orig: orig[k] });
+  const box = el("div", { class: "update-status", "aria-live": "polite" });
+  const draw = (st) => {
+    const L = st.latest;
+    const when = st.last_check && !String(st.last_check).startsWith("0001") ? new Date(st.last_check).toLocaleString() : "ещё не проверялось";
+    const busy = { checking: "Проверяю…", downloading: "Скачиваю" + (st.total ? ` ${Math.round(100 * st.done / st.total)}%` : "…"), installing: "Устанавливаю — программа перезапустится" }[st.status];
+    box.replaceChildren(...[
+      el("p", {}, "Установлена версия ", el("b", {}, st.current), ". Последняя проверка: " + when + "."),
+      busy ? el("p", {}, busy) : null,
+      st.error ? el("p", { class: "note" }, st.error) : null,
+      L ? el("div", { class: "release" },
+        el("p", {}, el("b", {}, "Доступна версия " + L.version), L.version === st.skipped ? " (вы решили её пропустить)" : "",
+          L.url ? el("span", {}, " · ", el("a", { href: "#", onclick: (e) => { e.preventDefault(); act("open"); } }, "страница выпуска")) : null),
+        L.notes ? el("pre", { class: "notes" }, L.notes) : null)
+        : (st.status === "idle" && st.last_check && !String(st.last_check).startsWith("0001") ? el("p", {}, "У вас последняя версия.") : null),
+      el("div", { class: "actions", style: "padding:6px 0 14px" },
+        el("button", { class: "btn", onclick: () => act("check") }, "Проверить сейчас"),
+        L ? el("button", { class: "btn primary", onclick: () => { if (confirm(`Установить версию ${L.version}? Программа закроется и запустится снова.`)) act("install"); } }, "Обновить до " + L.version) : null,
+        L && L.version !== st.skipped ? el("button", { class: "btn", onclick: () => act("skip") }, "Пропустить эту версию") : null)].filter(Boolean));
+  };
+  const act = async (op) => {
+    try { draw(await api("/api/update", { op })); if (op === "skip") await load(); } catch (e) { toast(e.message, true); }
+  };
+  const poll = async () => {
+    try { const st = await api("/api/update"); draw(st); if (["checking", "downloading", "installing"].includes(st.status) && document.body.contains(box)) setTimeout(poll, 700); }
+    catch (e) { box.replaceChildren(el("p", { class: "empty" }, e.message)); }
+  };
+  poll();
+  return el("div", { class: "group" },
+    el("h3", {}, "Обновления"),
+    f("check", "bool", "Проверять обновления", "С GitHub, страница выпусков проекта."),
+    f("auto", "bool", "Автообновление", "Скачивать и устанавливать новую версию самостоятельно — когда минуту ничего не печатаете. Файл проверяется по контрольной сумме."),
+    f("interval_hours", "int", "Проверять раз в, часов"),
+    f("prerelease", "bool", "Предлагать бета-версии"),
+    box);
+}
+
 function renderGeneral(m) {
   const g = (k, t, l, h, o) => field({ k, t, l, h, o }, cfg, k, { orig: JSON.parse(saved)[k] });
   m.append(el("h2", {}, "Общие"),
     el("p", { class: "lead" }, "Erised Switcher следит за нажатыми клавишами, а не за текстом в окне, поэтому работает и в терминалах. Здесь — то, что относится ко всей программе."),
+    renderUpdates(),
     el("div", { class: "group" },
       g("enabled", "bool", "Программа включена", "Горячие клавиши работают и в выключенном состоянии."),
       g("autostart", "bool", "Запускать вместе с Windows"),

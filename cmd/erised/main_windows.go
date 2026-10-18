@@ -18,5 +18,8 @@ func main() {
 		}
 		os.Exit(settingswin.Run(url, dir))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--apply-update" {
+		os.Exit(app.ApplyUpdate(os.Args[2:]))
+	}
 	os.Exit(app.Run())
 }

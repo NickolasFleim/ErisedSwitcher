@@ -31,7 +31,7 @@ import (
 )
 
 // Version — версия программы.
-const Version = "1.2.0"
+const Version = "1.3.0"
 
 // AppName — название программы.
 const AppName = "Erised Switcher"
@@ -54,6 +54,7 @@ const (
 
 // Пункты меню.
 const (
+	miUpdate   = 90
 	miSettings = 100 + iota
 	miEnabled
 	miToggleApp
@@ -115,6 +116,8 @@ type App struct {
 	popup       *win.Popup
 	popupWindow atomic.Uint64 // окно, для которого показана полоска
 
+	upd *updater // обновления
+
 	// Очередь исправлений.
 	jobs      chan job
 	busyMu    sync.Mutex
@@ -151,6 +154,13 @@ func Run() int {
 	restarted := len(os.Args) > 1 && os.Args[1] == "--quiet"
 	single := win.SingleInstance(mutexName)
 	// После «Перезапустить от администратора» прежний экземпляр ещё мгновение жив — подождём.
+	// После обновления новая версия запускается, пока старая ещё может доживать — тоже ждём.
+	if !single {
+		for i := 0; !single && i < 20; i++ {
+			time.Sleep(100 * time.Millisecond)
+			single = win.SingleInstance(mutexName)
+		}
+	}
 	for i := 0; !single && restarted && i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		single = win.SingleInstance(mutexName)
@@ -239,6 +249,8 @@ func Run() int {
 	} else if len(os.Args) < 2 || os.Args[1] != "--quiet" {
 		a.tray.Balloon("Erised Switcher работает", "Раскладка исправляется автоматически. Настройки — по щелчку на значке.", false)
 	}
+
+	a.startUpdater() // после приветствия: сообщение об обновлении важнее
 
 	win.MessageLoop()
 
@@ -983,6 +995,11 @@ func (a *App) showMenu() {
 	if !win.IsAdmin() {
 		items = append(items, win.MenuItem{ID: miAdmin, Text: "Перезапустить от администратора (для окон администратора)"})
 	}
+	if v := a.upd.Available(); v != "" {
+		items = append(items, win.MenuItem{ID: miUpdate, Text: "Обновить до версии " + v})
+	} else {
+		items = append(items, win.MenuItem{ID: miUpdate, Text: "Проверить обновления"})
+	}
 	items = append(items, win.MenuItem{ID: miAbout, Text: "О программе"}, win.MenuItem{}, win.MenuItem{ID: miExit, Text: "Выход"})
 	switch win.PopupMenu(a.hwnd, items) {
 	case miSettings:
@@ -1012,6 +1029,12 @@ func (a *App) showMenu() {
 		}
 		_ = a.hooks.Install()
 		a.refreshIcon(true)
+	case miUpdate:
+		if a.upd.Available() != "" {
+			_ = a.upd.Action("install")
+		} else {
+			go a.upd.check(true)
+		}
 	case miAbout:
 		win.MessageBox(AppName+" "+Version, mirrorInscription+"\n\n"+
 			"Как и зеркало, показывает не то, что вы набрали, а то, что вы хотели написать.\n"+
@@ -1142,3 +1165,9 @@ func (a *App) reloadFiles() {
 		a.tray.Balloon("Ошибка в words.json", err.Error(), true)
 	}
 }
+
+// UpdateStatus — состояние обновлений для окна настроек.
+func (a *App) UpdateStatus() map[string]any { return a.upd.Status() }
+
+// UpdateAction — проверить / установить / пропустить версию.
+func (a *App) UpdateAction(op string) error { return a.upd.Action(op) }
