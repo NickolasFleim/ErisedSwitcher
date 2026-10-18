@@ -8,7 +8,7 @@ Automatic keyboard layout switcher for Windows 10/11 — English, Russian and Uk
 
 The program's interface is in Russian; the names of tabs and options below are translated.
 
-It works like Caramba Switcher or Punto Switcher, with a few important differences:
+It notices a word typed in the wrong layout, erases it, types it correctly and switches the layout.
 
 - **Works in terminals** — Windows Terminal, cmd, PowerShell, WSL, mintty — and in any other program that doesn't expose its text. Erised Switcher remembers the keys you pressed, not the text in the window, so it doesn't care what the window can do.
 - **Everything is tunable**: confidence thresholds, per-application rules, hotkeys, input delays, how the current layout is detected.

@@ -547,7 +547,7 @@ function showWizard() {
     () => [el("h2", { id: "wz-title" }, "Исправления"),
       el("h3", {}, "Клавиша, чтобы исправить слово или выделенный текст вручную"),
       el("div", { class: "choice" },
-        radio("wz-h", "DoubleShift", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Shift дважды", "Как в Caramba и Punto"),
+        radio("wz-h", "DoubleShift", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Shift дважды", "Привычный вариант"),
         radio("wz-h", "Pause", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Pause/Break"),
         radio("wz-h", "DoubleRCtrl", w.hotkeys.convert_word, v => w.hotkeys.convert_word = v, "Правый Ctrl дважды")),
       el("h3", {}, "Опечатки"),
