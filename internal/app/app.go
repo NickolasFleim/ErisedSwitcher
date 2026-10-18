@@ -117,6 +117,8 @@ type App struct {
 	hist        *predict.History
 	pred        *predict.Predictor
 	popup       *win.Popup
+	flash       *win.Popup
+	flashSeq    atomic.Uint64
 	popupWindow atomic.Uint64 // окно, для которого показана полоска
 
 	upd             *updater // обновления
@@ -655,6 +657,12 @@ func (a *App) execute(j job) {
 				}
 			}
 			win.TapKeys(act.Trail, ms(r.KeyDelayMs))
+			if act.From != "" {
+				a.flashCorrection(j.info, act.From, act.Text)
+			} else if a.flash != nil && a.flash.Visible() {
+				a.flashSeq.Add(1) // отмена или ручная конвертация — вспышка больше не верна
+				a.flash.Hide()
+			}
 		case engine.ActSwitchLayout:
 			a.switchTo(j.info, act.Target)
 			time.Sleep(ms(r.SwitchDelayMs))

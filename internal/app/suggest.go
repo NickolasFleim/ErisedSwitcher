@@ -31,6 +31,7 @@ func (a *App) initPredict() {
 	a.pred.SetUseBase(a.cfg.Load().Suggest.BaseNextWords)
 	a.eng.SetPredictor(a.pred)
 	a.popup = win.NewPopup(a.onPopupClick)
+	a.flash = win.NewPopup(nil)
 	// Индекс похожих слов строится ~1 с — в фоне, чтобы первое исправление не ждало.
 	go prepareSimilar()
 }
@@ -76,6 +77,30 @@ func (a *App) onPopupClick(idx int, version uint64) {
 		a.jobs <- job{actions: res.Actions, info: info, rule: rule}
 	}
 	a.pushSuggestions(&info)
+}
+
+// flashCorrection ненадолго показывает у курсора ввода, что исправлено: «пртвет → привет».
+func (a *App) flashCorrection(info win.WindowInfo, from, to string) {
+	cfg := a.cfg.Load()
+	if a.flash == nil || !cfg.FlashCorrections || from == to {
+		return
+	}
+	sg := cfg.Suggest
+	pos := sg.Position
+	if pos == "off" {
+		pos = "caret"
+	}
+	seq := a.flashSeq.Add(1)
+	a.flash.Show(win.PopupState{
+		Items:   []win.PopupItem{{Text: from + "  →  " + to, Bold: true}},
+		Version: seq, Target: info.Hwnd, Focus: info.Focus, Thread: info.Thread,
+		Position: pos, Fallback: sg.Fallback, UseAcc: sg.UseAccessibility, Scale: sg.Scale * 0.9, Above: true,
+	})
+	time.AfterFunc(1400*time.Millisecond, func() {
+		if a.flashSeq.Load() == seq {
+			a.flash.Hide()
+		}
+	})
 }
 
 // checkPopup прячет полоску, если вы переключились в другое окно (таймер, главный поток).

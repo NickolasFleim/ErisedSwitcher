@@ -238,6 +238,9 @@ type Config struct {
 	// Автозапуск с Windows.
 	Autostart bool `json:"autostart"`
 
+	// Ненадолго показывать у курсора, что исправлено («пртвет → привет»).
+	FlashCorrections bool `json:"flash_corrections"`
+
 	Suggest Suggest `json:"suggest"`
 	Update  Update  `json:"update"`
 
@@ -252,14 +255,15 @@ func ptr[T any](v T) *T { return &v }
 // Default — настройки по умолчанию.
 func Default() *Config {
 	return &Config{
-		Version:         1,
-		Enabled:         true,
-		DoubleTapMs:     400,
-		SkipPasswords:   true,
-		TrayShowsLayout: true,
-		UIMode:          "window",
-		Languages:       "auto",
-		LogSize:         200,
+		Version:          1,
+		Enabled:          true,
+		DoubleTapMs:      400,
+		SkipPasswords:    true,
+		TrayShowsLayout:  true,
+		FlashCorrections: true,
+		UIMode:           "window",
+		Languages:        "auto",
+		LogSize:          200,
 		Defaults: Rule{
 			Mode:                     ptr("auto"),
 			MinLen:                   ptr(2),

@@ -73,6 +73,8 @@ type Action struct {
 	// Для ActConvertSelection: выделение только предполагается (сработало «умное» действие
 	// конвертации слова). Если скопировать нечего — молча переключить раскладку.
 	Quiet bool
+	// Автоматическое исправление: что было набрано (для вспышки «пртвет → привет»).
+	From string
 }
 
 // Result — ответ ядра на событие.
@@ -376,7 +378,7 @@ func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 			alt := v.AltLang
 			c := &correction{origKeys: keys, origLang: e.cur.lang, newLang: alt, newLen: len(keys), auto: true, histIdx: -1}
 			act := Action{Kind: ActReplace, Backspaces: len(e.cur.keys), Text: keymap.RenderAll(keys, alt),
-				Keys: keys, Target: e.targetFor(r, alt), Reason: v.Reason}
+				Keys: keys, Target: e.targetFor(r, alt), Reason: v.Reason, From: keymap.RenderAll(keys, e.cur.lang)}
 			e.cur.keys, e.cur.lang, e.cur.corrected = keys, alt, true
 			e.last, e.fresh = c, true
 			return Result{Swallow: true, Actions: []Action{act}}
@@ -546,7 +548,7 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		alt := v.AltLang
 		c := &correction{origKeys: t.keys, origLang: t.lang, newLang: alt, newLen: len(t.keys), trail: vk, auto: true, histIdx: len(e.hist)}
 		act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: keymap.RenderAll(t.keys, alt), Keys: t.keys,
-			Target: e.targetFor(r, alt), Trail: []uint16{vk}, Reason: v.Reason}
+			Target: e.targetFor(r, alt), Trail: []uint16{vk}, Reason: v.Reason, From: keymap.RenderAll(t.keys, t.lang)}
 		t.lang, t.corrected = alt, true
 		e.learnWord(&t, ctx)
 		e.pushHist(t)

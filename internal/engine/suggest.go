@@ -474,7 +474,7 @@ func (e *Engine) autocorrect(t *token, vk uint16, ctx *Context) (Action, *correc
 	lead, core, trail := splitWord(text)
 	fixed := lead + predict.MatchCase(core, d.Best.Word) + trail
 	c := &correction{origKeys: t.keys, origLang: t.lang, newLang: t.lang, newLen: len([]rune(fixed)), trail: vk, auto: true, histIdx: len(e.hist)}
-	act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: fixed, Target: keymap.Unknown, Trail: []uint16{vk}, Reason: "исправлена опечатка"}
+	act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: fixed, Target: keymap.Unknown, Trail: []uint16{vk}, Reason: "исправлена опечатка", From: text}
 	var keys []keymap.Key
 	for _, rr := range fixed {
 		k, ok := keymap.KeyForRune(rr, t.lang)

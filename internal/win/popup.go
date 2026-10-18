@@ -3,6 +3,7 @@
 package win
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -68,7 +69,11 @@ type PopupState struct {
 	UseAcc        bool
 	Scale         float64
 	Clickable     bool
+	// Над курсором ввода (вспышка исправления), чтобы не закрывать полоску подсказок.
+	Above bool
 }
+
+var popupSeq atomic.Int32
 
 // Popup — полоска подсказок: окно без фокуса поверх всех окон. Работает в своём потоке.
 type Popup struct {
@@ -140,7 +145,8 @@ func (p *Popup) loop() {
 	runtime.LockOSThread()
 	pCoInitializeEx.Call(0, 2) // COINIT_APARTMENTTHREADED — для специальных возможностей
 	hinst, _, _ := pGetModuleHandleW.Call(0)
-	cls := "ErisedSuggestPopup"
+	// У каждой полоски свой класс окна: обработчик сообщений привязан к классу.
+	cls := fmt.Sprintf("ErisedSuggestPopup%d", popupSeq.Add(1))
 	wc := WNDCLASSEXW{
 		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
 		Style:         0x00020000, // CS_DROPSHADOW
@@ -197,6 +203,12 @@ func (p *Popup) wndProcInner(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 		}
 		return 0
 	case 0x0200: // WM_MOUSEMOVE
+		p.mu.Lock()
+		click := p.state.Clickable
+		p.mu.Unlock()
+		if !click {
+			return 0
+		}
 		x := int32(int16(l & 0xFFFF))
 		h := -1
 		for i, c := range p.cells {
@@ -293,6 +305,18 @@ func (p *Popup) update() {
 	if s.Position == "bottom" {
 		posX = (work.Left+work.Right)/2 - width/2
 		posY = work.Bottom - height - px(12)
+		if s.Above {
+			posY -= height + px(6)
+		}
+	} else if s.Above {
+		posX = anchor.X - padX
+		posY = anchor.Y - height - px(6)
+		if below {
+			posY -= px(22) // над строкой, а не на ней
+		}
+		if posY < work.Top {
+			posY = anchor.Y + px(34)
+		}
 	} else {
 		posX = anchor.X - padX
 		posY = anchor.Y + px(6)

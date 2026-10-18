@@ -194,3 +194,28 @@ func TestBaseNextWords(t *testing.T) {
 		t.Fatalf("ваша пара должна быть первой: %v", it)
 	}
 }
+
+// Автоматические исправления сообщают, что было набрано, — для вспышки у курсора.
+func TestFlashFrom(t *testing.T) {
+	s := newSimPred(t, "notepad.exe", keymap.RU)
+	s.typeAs("пртвет ", keymap.RU)
+	s2 := newSimPred(t, "notepad.exe", keymap.EN)
+	s2.typeAs("ghbdtn ", keymap.EN)
+	var got []string
+	for _, a := range append(s.actions, s2.actions...) {
+		if a.Kind == ActReplace && a.From != "" {
+			got = append(got, a.From+"→"+a.Text)
+		}
+	}
+	if len(got) < 2 || got[0] != "пртвет→привет" {
+		t.Fatalf("вспышки: %q", got)
+	}
+	// Отмена (Backspace сразу после) — без вспышки.
+	n := len(s.actions)
+	s.press(keymap.VK_BACK, Mods{})
+	for _, a := range s.actions[n:] {
+		if a.From != "" {
+			t.Fatalf("у отмены не должно быть вспышки: %+v", a)
+		}
+	}
+}
