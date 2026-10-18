@@ -18,6 +18,20 @@ func main() {
 		}
 		os.Exit(settingswin.Run(url, dir))
 	}
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--uninstall":
+			os.Exit(app.RunUninstall(len(os.Args) > 2 && os.Args[2] == "--quiet"))
+		case "--uninstall-cleanup":
+			os.Exit(app.RunUninstallCleanup(os.Args[2:]))
+		case "--selftest":
+			report := ""
+			if len(os.Args) > 2 {
+				report = os.Args[2]
+			}
+			os.Exit(app.SelfTest(report))
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--apply-update" {
 		os.Exit(app.ApplyUpdate(os.Args[2:]))
 	}

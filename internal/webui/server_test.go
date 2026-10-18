@@ -106,3 +106,11 @@ func TestServer(t *testing.T) {
 		t.Fatalf("чужой Host: %d", resp.StatusCode)
 	}
 }
+
+func (f *fakeHost) Diagnostics() map[string]any {
+	return map[string]any{"report": "Erised Switcher test"}
+}
+func (f *fakeHost) DiagnosticsAction(string) error { return nil }
+
+func (f *fakeHost) InstallStatus() map[string]any { return map[string]any{"installed": false} }
+func (f *fakeHost) InstallAction(string) error    { return nil }

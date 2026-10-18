@@ -1,0 +1,40 @@
+name: Ошибка / Bug report
+description: Что-то работает не так / Something doesn't work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо! Лучше всего — нажать «Сообщить об ошибке» в настройках (вкладка «Журнал»): версия и журнал подставятся сами.
+        Thanks! The easiest way is "Report a bug" in Settings → Log: version and log are filled in automatically.
+  - type: input
+    id: version
+    attributes:
+      label: Версия / Version
+      description: Настройки → панель слева, или «О программе» / Settings sidebar or About
+      placeholder: "1.4.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: "Windows 11 23H2, x64"
+  - type: input
+    id: app
+    attributes:
+      label: В какой программе / In which app
+      placeholder: "Telegram, Windows Terminal, Chrome…"
+  - type: textarea
+    id: what
+    attributes:
+      label: Что вы делали и что произошло / What happened
+      description: Что набирали, что ожидали, что получилось / What you typed, expected, got
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Журнал / Log
+      description: Вкладка «Журнал» → «Скопировать отчёт» / Log tab → "Copy report"
+      render: text

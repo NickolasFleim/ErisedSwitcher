@@ -1,5 +1,6 @@
-# Выпуск: при push тега vX.Y.Z собирает программу и публикует релиз на GitHub.
-# Программа сама находит релизы и обновляется (файлы ErisedSwitcher*.exe + checksums.txt).
+# Выпуск: при push тега vX.Y.Z собирает программу на Windows, проверяет её, подписывает
+# (если заданы секреты), публикует релиз и готовит манифест winget.
+# Программа сама находит релизы и обновляется (ErisedSwitcher*.exe + checksums.txt).
 name: Release
 
 on:
@@ -11,7 +12,14 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,22 +28,110 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Проверки
+      - name: Версия из тега
+        id: v
         run: |
-          go vet ./...
-          GOOS=windows go vet ./...
-          go test ./...
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          # Числовая версия для свойств файла: 1.4.0-beta.1 -> 1.4.0.0
+          n="${v%%-*}"; echo "numeric=${n}.0" >> "$GITHUB_OUTPUT"
+
+      - name: Тесты
+        run: go test ./...
+
+      - name: Сведения о версии в exe
+        run: |
+          # Для старых выпусков без папки winres остаются готовые .syso из репозитория.
+          if [ -f cmd/erised/winres/winres.json ]; then
+            go install github.com/tc-hib/go-winres@v0.3.3
+            cd cmd/erised
+            "$(go env GOPATH)/bin/go-winres" make --in winres/winres.json --out rsrc --arch amd64,arm64 \
+              --product-version "${{ steps.v.outputs.numeric }}" --file-version "${{ steps.v.outputs.numeric }}"
+          fi
 
       - name: Сборка
         run: |
           mkdir dist
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/ErisedSwitcher.exe ./cmd/erised
-          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/ErisedSwitcher-arm64.exe ./cmd/erised
-          cd dist && sha256sum ErisedSwitcher.exe ErisedSwitcher-arm64.exe > checksums.txt && cat checksums.txt
+          ld="-H windowsgui -s -w -X erised/internal/app.Version=${{ steps.v.outputs.version }}"
+          GOARCH=amd64 go build -trimpath -ldflags "$ld" -o dist/ErisedSwitcher.exe ./cmd/erised
+          GOARCH=arm64 go build -trimpath -ldflags "$ld" -o dist/ErisedSwitcher-arm64.exe ./cmd/erised
+
+      - name: Самопроверка
+        run: |
+          ./dist/ErisedSwitcher.exe --selftest selftest.txt; code=$?
+          cat selftest.txt
+          exit $code
+
+      - name: Подпись (если заданы секреты SIGN_PFX_BASE64 и SIGN_PFX_PASSWORD)
+        if: env.SIGN_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f $pfx /p $env:SIGN_PFX_PASSWORD dist\ErisedSwitcher.exe dist\ErisedSwitcher-arm64.exe
+          Remove-Item $pfx
+
+      - name: Контрольные суммы
+        run: cd dist && sha256sum ErisedSwitcher.exe ErisedSwitcher-arm64.exe > checksums.txt && cat checksums.txt
+
+      - name: Манифест winget
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          x64=$(sha256sum dist/ErisedSwitcher.exe | cut -d' ' -f1 | tr a-f A-F)
+          arm=$(sha256sum dist/ErisedSwitcher-arm64.exe | cut -d' ' -f1 | tr a-f A-F)
+          d="winget/manifests/n/NickolasFleim/ErisedSwitcher/$v"; mkdir -p "$d"
+          cat > "$d/NickolasFleim.ErisedSwitcher.yaml" <<YAML
+          PackageIdentifier: NickolasFleim.ErisedSwitcher
+          PackageVersion: $v
+          DefaultLocale: ru-RU
+          ManifestType: version
+          ManifestVersion: 1.6.0
+          YAML
+          cat > "$d/NickolasFleim.ErisedSwitcher.installer.yaml" <<YAML
+          PackageIdentifier: NickolasFleim.ErisedSwitcher
+          PackageVersion: $v
+          InstallerType: portable
+          Commands:
+          - erised-switcher
+          Installers:
+          - Architecture: x64
+            InstallerUrl: $base/ErisedSwitcher.exe
+            InstallerSha256: $x64
+          - Architecture: arm64
+            InstallerUrl: $base/ErisedSwitcher-arm64.exe
+            InstallerSha256: $arm
+          ManifestType: installer
+          ManifestVersion: 1.6.0
+          YAML
+          cat > "$d/NickolasFleim.ErisedSwitcher.locale.ru-RU.yaml" <<YAML
+          PackageIdentifier: NickolasFleim.ErisedSwitcher
+          PackageVersion: $v
+          PackageLocale: ru-RU
+          Publisher: NickolasFleim
+          PublisherUrl: https://github.com/NickolasFleim
+          PackageName: Erised Switcher
+          PackageUrl: https://github.com/${GITHUB_REPOSITORY}
+          License: GPL-3.0-or-later
+          LicenseUrl: https://github.com/${GITHUB_REPOSITORY}/blob/main/LICENSE
+          ShortDescription: Автоматическое переключение раскладки RU/EN/UK, исправление опечаток и подсказки при наборе — в том числе в терминалах.
+          Tags:
+          - keyboard
+          - layout
+          - switcher
+          - autocorrect
+          - punto
+          ReleaseNotesUrl: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}
+          ManifestType: defaultLocale
+          ManifestVersion: 1.6.0
+          YAML
+          (cd winget && 7z a -bd ../dist/winget-manifests.zip manifests >/dev/null)
+          cat "$d"/*.yaml
 
       - name: Заметки к выпуску
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${{ steps.v.outputs.version }}"
           awk -v v="$v" 'index($0, "## " v) == 1 { f = 1; next } /^## / && f { exit } f' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "Erised Switcher $v" > notes.md
           cat notes.md
@@ -49,5 +145,14 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "Erised Switcher ${GITHUB_REF_NAME#v}" --notes-file notes.md $pre
+            gh release create "$GITHUB_REF_NAME" dist/* --title "Erised Switcher ${{ steps.v.outputs.version }}" --notes-file notes.md $pre
           fi
+
+      - name: Обновление в winget (если задан секрет WINGET_TOKEN и пакет уже принят в winget)
+        if: env.WINGET_TOKEN != '' && !contains(github.ref_name, '-')
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME"
+          .\wingetcreate.exe update NickolasFleim.ErisedSwitcher --version "${{ steps.v.outputs.version }}" `
+            --urls "$base/ErisedSwitcher.exe|x64" "$base/ErisedSwitcher-arm64.exe|arm64" --submit --token $env:WINGET_TOKEN

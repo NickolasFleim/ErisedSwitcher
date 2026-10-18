@@ -38,6 +38,12 @@ type Host interface {
 	HistoryForget(lang, prev, next string) error
 	UpdateStatus() map[string]any
 	UpdateAction(op string) error
+	// Отчёты о сбоях и обращение в GitHub.
+	Diagnostics() map[string]any
+	DiagnosticsAction(op string) error
+	// Установка в систему.
+	InstallStatus() map[string]any
+	InstallAction(op string) error
 }
 
 // Server — HTTP-сервер настроек.
@@ -70,6 +76,8 @@ func Start(host Host, port int) (*Server, error) {
 	mux.HandleFunc("/api/action", s.api(s.action))
 	mux.HandleFunc("/api/history", s.api(s.history))
 	mux.HandleFunc("/api/update", s.api(s.update))
+	mux.HandleFunc("/api/diag", s.api(s.diag))
+	mux.HandleFunc("/api/install", s.api(s.install))
 	s.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go s.srv.Serve(ln)
 	return s, nil
@@ -270,4 +278,34 @@ func (s *Server) update(r *http.Request) (any, error) {
 		}
 	}
 	return s.host.UpdateStatus(), nil
+}
+
+func (s *Server) diag(r *http.Request) (any, error) {
+	if r.Method == http.MethodPost {
+		var q struct {
+			Op string `json:"op"` // issue | clear
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			return nil, err
+		}
+		if err := s.host.DiagnosticsAction(q.Op); err != nil {
+			return nil, err
+		}
+	}
+	return s.host.Diagnostics(), nil
+}
+
+func (s *Server) install(r *http.Request) (any, error) {
+	if r.Method == http.MethodPost {
+		var q struct {
+			Op string `json:"op"` // install | uninstall
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			return nil, err
+		}
+		if err := s.host.InstallAction(q.Op); err != nil {
+			return nil, err
+		}
+	}
+	return s.host.InstallStatus(), nil
 }

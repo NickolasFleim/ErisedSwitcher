@@ -1,6 +1,6 @@
 module erised
 
-go 1.22
+go 1.23
 
 replace golang.org/x/sys => github.com/golang/sys v0.28.0
 

@@ -136,7 +136,8 @@ td .btn { margin-right: 4px; }
 .cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); }
 .cap .why { font-size: 12px; color: var(--muted); max-width: 240px; margin-top: 4px; }
 .cap .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
-.update-status pre.notes { white-space: pre-wrap; font: 13px/1.5 inherit; font-family: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; margin: 6px 0; }
+.crash summary { cursor: pointer; padding: 6px 0; }
+.crash pre.notes, .update-status pre.notes { white-space: pre-wrap; word-break: break-word; font: 13px/1.5 inherit; font-family: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; margin: 6px 0; }
 .update-status a { color: var(--focus); }
 .cap .typo { color: var(--ink); border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 6px; }
 
@@ -439,11 +440,30 @@ function renderUpdates() {
     box);
 }
 
+function renderInstall() {
+  const box = el("div", {});
+  const draw = (st) => {
+    let text, btn = null;
+    if (st.managed) text = "Программа установлена через winget или работает как переносная — обновляется и удаляется тем же способом.";
+    else if (st.this_copy) {
+      text = "Установлена в " + st.install_dir + ". Есть в «Пуске» и в «Параметры → Приложения».";
+      btn = el("button", { class: "btn danger", onclick: () => { if (confirm("Удалить Erised Switcher? Будет показано окно подтверждения.")) api("/api/install", { op: "uninstall" }).catch(e => toast(e.message, true)); } }, "Удалить программу");
+    } else {
+      text = st.installed ? "Есть установленная копия в " + st.install_dir + ", но сейчас запущена другая: " + st.exe + "." : "Программа запущена из " + st.exe + " и не установлена.";
+      btn = el("button", { class: "btn", onclick: async () => { try { await api("/api/install", { op: "install" }); toast("Устанавливаю — программа перезапустится"); } catch (e) { toast(e.message, true); } } }, st.installed ? "Обновить установленную копию этой" : "Установить");
+    }
+    box.replaceChildren(...[el("p", {}, text), btn ? el("div", { class: "actions", style: "padding:0 0 14px" }, btn) : null].filter(Boolean));
+  };
+  api("/api/install").then(draw).catch(e => box.replaceChildren(el("p", { class: "empty" }, e.message)));
+  return el("div", { class: "group" }, el("h3", {}, "Установка"), box);
+}
+
 function renderGeneral(m) {
   const g = (k, t, l, h, o) => field({ k, t, l, h, o }, cfg, k, { orig: JSON.parse(saved)[k] });
   m.append(el("h2", {}, "Общие"),
     el("p", { class: "lead" }, "Erised Switcher следит за нажатыми клавишами, а не за текстом в окне, поэтому работает и в терминалах. Здесь — то, что относится ко всей программе."),
     renderUpdates(),
+    renderInstall(),
     el("div", { class: "group" },
       g("enabled", "bool", "Программа включена", "Горячие клавиши работают и в выключенном состоянии."),
       g("autostart", "bool", "Запускать вместе с Windows"),
@@ -725,9 +745,36 @@ function renderProbe(m) {
   run();
 }
 
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  const ta = el("textarea", { style: "position:fixed;opacity:0" }); ta.value = text; document.body.append(ta); ta.select();
+  document.execCommand("copy"); ta.remove(); return Promise.resolve();
+}
+
+function renderDiagnostics() {
+  const box = el("div", {});
+  const draw = (d) => {
+    const crashes = d.crashes || [];
+    box.replaceChildren(...[
+      el("p", { class: "help" }, "Отчёт содержит версию программы и Windows, сведения о раскладках, последний сбой и служебный журнал. Набранного текста и вашего имени пользователя в нём нет."),
+      el("div", { class: "actions", style: "padding:6px 0 12px" },
+        el("button", { class: "btn primary", onclick: async () => { await api("/api/diag", { op: "issue" }); toast("Открыта форма на GitHub — проверьте текст и отправьте"); } }, "Сообщить об ошибке на GitHub"),
+        el("button", { class: "btn", onclick: async () => { await copyText(d.report); toast("Отчёт скопирован"); } }, "Скопировать отчёт"),
+        crashes.length ? el("button", { class: "btn danger", onclick: async () => draw(await api("/api/diag", { op: "clear" })) }, "Удалить отчёты о сбоях") : null),
+      crashes.length ? el("div", {}, el("h3", {}, "Сбои"),
+        ...crashes.map(c => el("details", { class: "crash" }, el("summary", {}, new Date(c.time).toLocaleString() + " — " + ((c.text || "").match(/Где: (.*)/) || [, "аварийное завершение"])[1]),
+          el("pre", { class: "notes" }, c.text || ""))))
+        : el("p", { class: "empty" }, "Сбоев не было."),
+    ].filter(Boolean));
+  };
+  api("/api/diag").then(draw).catch(e => box.replaceChildren(el("p", { class: "empty" }, e.message)));
+  return el("div", { class: "group" }, el("h3", {}, "Ошибки и отчёты"), box);
+}
+
 async function renderLog(m) {
   m.append(el("h2", {}, "Журнал"),
-    el("p", { class: "lead" }, "Последние решения программы с объяснением. Хранится только в памяти, пока программа запущена."));
+    el("p", { class: "lead" }, "Последние решения программы с объяснением. Хранится только в памяти, пока программа запущена."),
+    renderDiagnostics());
   if (!S.config.log_decisions) m.append(el("p", { class: "note" }, "Журнал выключен. Включите его на вкладке «Общие» и сохраните."));
   const box = el("div", { class: "group log" });
   m.append(el("div", { class: "actions", style: "margin-bottom:12px" },

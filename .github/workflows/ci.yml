@@ -1,4 +1,4 @@
-# Проверка каждого коммита и pull request: тесты и сборка под Windows.
+# Проверка каждого коммита и pull request.
 name: CI
 
 on:
@@ -7,7 +7,8 @@ on:
   pull_request:
 
 jobs:
-  build:
+  linux:
+    name: Тесты (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +19,33 @@ jobs:
       - run: go vet ./...
       - run: GOOS=windows go vet ./...
       - run: go test ./...
+
+  windows:
+    name: Тесты и самопроверка (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go test ./...
       - name: Сборка
         run: |
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher.exe ./cmd/erised
-          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher-arm64.exe ./cmd/erised
+          GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher.exe ./cmd/erised
+          GOARCH=arm64 go build -trimpath -ldflags "-H windowsgui -s -w" -o ErisedSwitcher-arm64.exe ./cmd/erised
+      - name: Самопроверка на настоящей Windows
+        run: |
+          ./ErisedSwitcher.exe --selftest selftest.txt; code=$?
+          cat selftest.txt
+          exit $code
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ErisedSwitcher-${{ github.sha }}
-          path: ErisedSwitcher*.exe
+          path: |
+            ErisedSwitcher*.exe
+            selftest.txt

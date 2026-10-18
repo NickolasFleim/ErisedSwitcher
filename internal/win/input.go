@@ -16,12 +16,13 @@ const (
 	MagicReplay uintptr = 0x534D4552 // «SMER» — повтор ваших нажатий, обработать как настоящие
 )
 
-// SendInputs отправляет события в систему.
-func SendInputs(in []INPUT) {
+// SendInputs отправляет события в систему. Возвращает, сколько событий принято.
+func SendInputs(in []INPUT) int {
 	if len(in) == 0 {
-		return
+		return 0
 	}
-	pSendInput.Call(uintptr(len(in)), uintptr(unsafe.Pointer(&in[0])), unsafe.Sizeof(INPUT{}))
+	n, _, _ := pSendInput.Call(uintptr(len(in)), uintptr(unsafe.Pointer(&in[0])), unsafe.Sizeof(INPUT{}))
+	return int(n)
 }
 
 func isExtended(vk uint16) bool {

@@ -217,6 +217,8 @@ type Config struct {
 	LayoutEN string `json:"layout_en"`
 	// Где открывать настройки: "window" — отдельное окно программы, "browser" — в браузере.
 	UIMode string `json:"ui_mode"`
+	// Установку уже предлагали (больше не спрашивать).
+	InstallPrompted bool `json:"install_prompted"`
 	// Порт окна настроек (0 — случайный).
 	UIPort int `json:"ui_port"`
 	// Показывать раскладку в трее.

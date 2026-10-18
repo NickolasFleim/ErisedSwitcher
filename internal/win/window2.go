@@ -106,3 +106,36 @@ func WaitProcessExit(pid int, timeout time.Duration) bool {
 	r, _, _ := pWaitForSingleObject.Call(h, uintptr(timeout.Milliseconds()))
 	return r == 0 // WAIT_OBJECT_0
 }
+
+var pRtlGetVersion = syscall.NewLazyDLL("ntdll.dll").NewProc("RtlGetVersion")
+
+// WindowsVersion — например «Windows 11 (10.0.22631)».
+func WindowsVersion() string {
+	var vi struct {
+		Size, Major, Minor, Build, Platform uint32
+		CSD                                 [128]uint16
+	}
+	vi.Size = uint32(unsafe.Sizeof(vi))
+	if r, _, _ := pRtlGetVersion.Call(uintptr(unsafe.Pointer(&vi))); r != 0 {
+		return "Windows"
+	}
+	name := "Windows 10"
+	if vi.Major == 10 && vi.Build >= 22000 {
+		name = "Windows 11"
+	} else if vi.Major < 10 {
+		name = "Windows"
+	}
+	return name + " (" + itoa(int(vi.Major)) + "." + itoa(int(vi.Minor)) + "." + itoa(int(vi.Build)) + ")"
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}

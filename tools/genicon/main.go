@@ -1,6 +1,7 @@
 // genicon рисует assets/erised.ico (значок exe) и assets/erised.png (предпросмотр).
 //
-//	go run ./tools/genicon && rsrc -arch amd64 -ico assets/erised.ico -manifest assets/erised.manifest -o cmd/erised/rsrc_windows_amd64.syso
+//	go run ./tools/genicon
+//	cd cmd/erised && go-winres make --arch amd64,arm64   (go install github.com/tc-hib/go-winres@v0.3.3)
 package main
 
 import (
@@ -52,6 +53,7 @@ func main() {
 		out.Write(b)
 	}
 	must(os.WriteFile("assets/erised.ico", out.Bytes(), 0o644))
+	must(os.WriteFile("cmd/erised/winres/icon.ico", out.Bytes(), 0o644))
 	must(os.WriteFile("assets/erised.png", pngOf(256), 0o644))
 }
 

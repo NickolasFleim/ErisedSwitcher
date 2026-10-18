@@ -64,12 +64,14 @@ func (u *updater) loop() {
 		u.mu.Lock()
 		due := time.Since(u.lastCheck) >= time.Duration(cfg.IntervalHours)*time.Hour
 		u.mu.Unlock()
-		if cfg.Check && due {
-			u.check(false)
-		}
-		if cfg.Auto {
-			u.autoInstall()
-		}
+		win.Protect("обновления", func() {
+			if cfg.Check && due {
+				u.check(false)
+			}
+			if cfg.Auto {
+				u.autoInstall()
+			}
+		})
 		select {
 		case <-time.After(time.Minute):
 		case <-u.wake:
@@ -161,6 +163,17 @@ func (u *updater) autoInstall() {
 	rel := u.latest
 	u.mu.Unlock()
 	if rel == nil || rel.Version == cfg.Skipped {
+		return
+	}
+	if wingetManaged() {
+		// Установлено через winget — обновляет winget («winget upgrade»), мы только сообщаем.
+		u.mu.Lock()
+		notify := u.notified != rel.Version
+		u.notified = rel.Version
+		u.mu.Unlock()
+		if notify {
+			u.a.tray.Balloon("Доступна версия "+rel.Version, "Программа установлена через winget: обновите командой winget upgrade NickolasFleim.ErisedSwitcher", false)
+		}
 		return
 	}
 	if _, err := u.download(); err != nil {

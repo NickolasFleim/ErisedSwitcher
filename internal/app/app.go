@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -30,8 +31,10 @@ import (
 	"erised/internal/words"
 )
 
-// Version — версия программы.
-const Version = "1.3.0"
+// Version — версия программы. При сборке релиза подставляется из тега:
+// go build -ldflags "-X erised/internal/app.Version=1.4.0" (так она не разойдётся с тегом,
+// иначе программа считала бы выпуск на GitHub новее себя и обновлялась бы без конца).
+var Version = "1.4.0"
 
 // AppName — название программы.
 const AppName = "Erised Switcher"
@@ -116,7 +119,9 @@ type App struct {
 	popup       *win.Popup
 	popupWindow atomic.Uint64 // окно, для которого показана полоска
 
-	upd *updater // обновления
+	upd             *updater // обновления
+	crash           *crashes
+	crashedLastTime bool
 
 	// Очередь исправлений.
 	jobs      chan job
@@ -151,7 +156,7 @@ func (a *App) setTracked(l keymap.Lang) { a.tracked.Store(int32(l)) }
 // Run — точка входа. Возвращает код выхода.
 func Run() int {
 	runtime.LockOSThread()
-	restarted := len(os.Args) > 1 && os.Args[1] == "--quiet"
+	restarted := len(os.Args) > 1 && (os.Args[1] == "--quiet" || os.Args[1] == "--after-install")
 	single := win.SingleInstance(mutexName)
 	// После «Перезапустить от администратора» прежний экземпляр ещё мгновение жив — подождём.
 	// После обновления новая версия запускается, пока старая ещё может доживать — тоже ждём.
@@ -187,6 +192,16 @@ func Run() int {
 		defer f.Close()
 	}
 	log.Printf("Erised Switcher %s запускается, данные в %s", Version, a.dir)
+	a.setupCrashes()
+	defer func() {
+		// Сбой в главном потоке: сохраняем отчёт и выходим, не оставляя «висящий» перехват.
+		if r := recover(); r != nil {
+			a.onPanic("главный поток", r, debug.Stack())
+			a.hooks.Uninstall()
+			a.tray.Remove()
+			os.Exit(1)
+		}
+	}()
 	migrated := migrateFromSmena(a.dir)
 	for _, n := range migrated {
 		log.Printf("переход со Smena: %s", n)
@@ -205,6 +220,10 @@ func Run() int {
 	a.store = st
 	a.cfgMod, a.wordsMod = modTime(a.cfgPath), modTime(a.wordsPath)
 	a.lastSave = time.Now()
+	if a.offerInstall(cfg) {
+		return 0 // установленная копия запускается сама
+	}
+	cfg = a.cfg.Load()
 
 	go lang.Preload()
 	a.eng = engine.New(cfg, st)
@@ -232,7 +251,8 @@ func Run() int {
 
 	go a.worker()
 
-	if cfg.Autostart != win.AutostartEnabled(autostartName) {
+	// Путь в автозапуске обновляем всегда: программу могли установить или перенести.
+	if cfg.Autostart || win.AutostartEnabled(autostartName) {
 		a.applyAutostart(cfg.Autostart)
 	}
 
@@ -244,8 +264,12 @@ func Run() int {
 		a.tray.Balloon("Ошибка в настройках", cfgErr.Error()+"\nИспользуются значения по умолчанию.", true)
 	} else if wErr != nil {
 		a.tray.Balloon("Ошибка в словаре", "words.json повреждён, копия сохранена как words.json.broken", true)
+	} else if a.crashedLastTime {
+		a.tray.Balloon("Прошлый запуск завершился с ошибкой", "Отчёт сохранён — отправить его можно в настройках, вкладка «Журнал».", true)
 	} else if len(migrated) > 0 {
 		a.tray.Balloon("Smena теперь Erised Switcher", strings.Join(migrated, "; ")+".", false)
+	} else if len(os.Args) > 1 && os.Args[1] == "--after-install" {
+		a.tray.Balloon("Erised Switcher установлен", "Он в «Пуске» и в области уведомлений. Настройки — щелчком по значку.", false)
 	} else if len(os.Args) < 2 || os.Args[1] != "--quiet" {
 		a.tray.Balloon("Erised Switcher работает", "Раскладка исправляется автоматически. Настройки — по щелчку на значке.", false)
 	}
@@ -557,14 +581,7 @@ func (a *App) currentLang(info *win.WindowInfo, rule *config.Effective) keymap.L
 
 func (a *App) worker() {
 	for j := range a.jobs {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("сбой при исправлении: %v", r)
-				}
-			}()
-			a.execute(j)
-		}()
+		win.Protect("ввод исправления", func() { a.execute(j) })
 		a.flushQueued()
 	}
 }
@@ -873,7 +890,14 @@ func (a *App) refreshIcon(force bool) {
 	a.icon = h
 }
 
-func (a *App) wndProc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
+func (a *App) wndProc(hwnd uintptr, msg uint32, w, l uintptr) (ret uintptr) {
+	if win.Protect("окно программы", func() { ret = a.wndProcInner(hwnd, msg, w, l) }) {
+		return win.DefWindowProc(hwnd, msg, w, l)
+	}
+	return ret
+}
+
+func (a *App) wndProcInner(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 	switch msg {
 	case wmTray:
 		switch uint32(l) {

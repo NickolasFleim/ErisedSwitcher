@@ -71,3 +71,14 @@ func main() {
 	fmt.Println(s.URL())
 	select {}
 }
+
+func (h *host) Diagnostics() map[string]any {
+	return map[string]any{"report": "Erised Switcher 1.4.0\nWindows 11 (10.0.22631), amd64\n\n--- erised.log ---\n2026/10/18 19:00:00 запуск",
+		"crashes": []map[string]any{{"name": "crash-2026-10-18-190001.txt", "time": time.Now(), "text": "Где: перехват клавиатуры\nОшибка: пример\n\ngoroutine 1 [running]:\n…"}}}
+}
+func (h *host) DiagnosticsAction(string) error { return nil }
+
+func (h *host) InstallStatus() map[string]any {
+	return map[string]any{"installed": false, "this_copy": false, "managed": false, "install_dir": "%LOCALAPPDATA%\\Programs\\Erised Switcher", "exe": "%USERPROFILE%\\Downloads\\ErisedSwitcher.exe"}
+}
+func (h *host) InstallAction(string) error { return nil }

@@ -38,7 +38,10 @@ var (
 				Up:       wparam == WM_KEYUP || wparam == WM_SYSKEYUP,
 				Injected: k.Flags&LLKHF_INJECTED != 0,
 			}
-			if active.OnKey(ev) {
+			swallow := false
+			// Сбой в обработке не должен ни ронять программу, ни глотать клавишу.
+			Protect("перехват клавиатуры", func() { swallow = active.OnKey(ev) })
+			if swallow {
 				return 1
 			}
 		}
@@ -50,7 +53,7 @@ var (
 			switch wparam {
 			case WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_XBUTTONDOWN:
 				m := (*MSLLHOOKSTRUCT)(uptr(lparam))
-				active.OnMouse(uint32(wparam), m.Pt, m.Time)
+				Protect("перехват мыши", func() { active.OnMouse(uint32(wparam), m.Pt, m.Time) })
 			}
 		}
 		r, _, _ := pCallNextHookEx.Call(0, uintptr(code), wparam, lparam)

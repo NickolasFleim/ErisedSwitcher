@@ -164,7 +164,15 @@ func (p *Popup) loop() {
 	MessageLoop()
 }
 
-func (p *Popup) wndProc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
+func (p *Popup) wndProc(hwnd uintptr, msg uint32, w, l uintptr) (ret uintptr) {
+	ret = 0
+	if Protect("полоска подсказок", func() { ret = p.wndProcInner(hwnd, msg, w, l) }) {
+		return DefWindowProc(hwnd, msg, w, l)
+	}
+	return ret
+}
+
+func (p *Popup) wndProcInner(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 	switch msg {
 	case wmPopupUpdate:
 		p.pending.Store(false)
@@ -181,7 +189,7 @@ func (p *Popup) wndProc(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 			for i, c := range p.cells {
 				if x >= c.Left && x < c.Right {
 					if p.OnClick != nil {
-						go p.OnClick(i, ver)
+						go Protect("выбор подсказки", func() { p.OnClick(i, ver) })
 					}
 					break
 				}
