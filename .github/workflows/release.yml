@@ -59,7 +59,9 @@ jobs:
       - name: Самопроверка
         run: |
           ./dist/ErisedSwitcher.exe --selftest selftest.txt; code=$?
-          cat selftest.txt
+          cat selftest.txt || echo "::error::Самопроверка не создала отчёт (код $code)"
+          # Ошибки — отдельными пометками, их видно на странице запуска.
+          grep '^FAIL' selftest.txt | sed 's/^FAIL */::error title=Самопроверка::/' || true
           exit $code
 
       - name: Подпись (если заданы секреты SIGN_PFX_BASE64 и SIGN_PFX_PASSWORD)

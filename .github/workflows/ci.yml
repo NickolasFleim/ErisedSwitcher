@@ -40,7 +40,9 @@ jobs:
       - name: Самопроверка на настоящей Windows
         run: |
           ./ErisedSwitcher.exe --selftest selftest.txt; code=$?
-          cat selftest.txt
+          cat selftest.txt || echo "::error::Самопроверка не создала отчёт (код $code)"
+          # Ошибки — отдельными пометками, их видно на странице запуска.
+          grep '^FAIL' selftest.txt | sed 's/^FAIL */::error title=Самопроверка::/' || true
           exit $code
       - uses: actions/upload-artifact@v4
         if: always()

@@ -135,6 +135,8 @@ func installTo() (string, error) {
 			return "", fmt.Errorf("копирование в %s: %w", filepath.Dir(dst), err)
 		}
 	}
+	// Папки «Пуска» может не быть (новый профиль, самопроверка во временной папке).
+	_ = os.MkdirAll(filepath.Dir(startMenuShortcut()), 0o755)
 	if err := win.CreateShortcut(startMenuShortcut(), dst, "", "Erised Switcher — исправление раскладки и опечаток", filepath.Dir(dst)); err != nil {
 		log.Printf("ярлык: %v", err)
 	}

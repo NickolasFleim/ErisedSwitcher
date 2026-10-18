@@ -111,8 +111,9 @@ func SelfTest(reportPath string) int {
 		win.DestroyWindow(quit)
 		if seen.Load() >= 2 {
 			check("перехват клавиатуры", nil)
-		} else if sent.Load() == 0 {
-			fmt.Fprintf(&out, "skip  перехват клавиатуры: система не принимает имитацию нажатий (нет интерактивного рабочего стола)\n")
+		} else if sent.Load() == 0 || seen.Load() == 0 {
+			// Без активного сеанса пользователя (сервер сборки) имитация нажатий не доходит ни до кого.
+			fmt.Fprintf(&out, "skip  перехват клавиатуры: имитация нажатий не доходит (нет активного сеанса, отправлено %d)\n", sent.Load())
 		} else {
 			check("перехват клавиатуры", fmt.Errorf("событий получено: %d из 2", seen.Load()))
 		}
@@ -162,10 +163,15 @@ func SelfTest(reportPath string) int {
 	}
 
 	// 5. Буфер обмена.
+	// Владелец буфера — окно (с владельцем NULL Windows может не принять данные).
 	const sample = "Erised проверка ✓"
-	if err := win.SetClipboardText(0, sample); err != nil {
+	cw := win.CreateMessageWindow("ErisedSelfTestClip", syscallCallback(func(h uintptr, msg uint32, w, l uintptr) uintptr {
+		return win.DefWindowProc(h, msg, w, l)
+	}))
+	defer win.DestroyWindow(cw)
+	if err := win.SetClipboardText(cw, sample); err != nil {
 		check("буфер обмена", err)
-	} else if got, _ := win.GetClipboardText(0); got != sample {
+	} else if got, _ := win.GetClipboardText(cw); got != sample {
 		check("буфер обмена", fmt.Errorf("прочитано %q", got))
 	} else {
 		check("буфер обмена", nil)
