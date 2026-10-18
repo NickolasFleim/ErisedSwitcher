@@ -1,10 +1,15 @@
 // Package keymap описывает, какой символ даёт каждая клавиша в раскладках
-// US English и Русская (ЙЦУКЕН). Программа хранит не символы, а нажатия,
-// поэтому одно и то же нажатие можно «прочитать» в любой раскладке —
+// US English, Русская (ЙЦУКЕН) и Украинская (расширенная). Программа хранит не символы,
+// а нажатия, поэтому одно и то же нажатие можно «прочитать» в любой раскладке —
 // не нужно спрашивать у приложения (терминала), какой текст оно показало.
 package keymap
 
-import "unicode"
+import (
+	"strings"
+	"sync"
+	"sync/atomic"
+	"unicode"
+)
 
 // Lang — раскладка.
 type Lang int
@@ -13,7 +18,11 @@ const (
 	Unknown Lang = -1
 	EN      Lang = 0
 	RU      Lang = 1
+	UK      Lang = 2
 )
+
+// All — все поддерживаемые раскладки.
+var All = []Lang{EN, RU, UK}
 
 func (l Lang) String() string {
 	switch l {
@@ -21,28 +30,104 @@ func (l Lang) String() string {
 		return "en"
 	case RU:
 		return "ru"
+	case UK:
+		return "uk"
 	}
 	return "?"
 }
 
-// Other возвращает вторую раскладку пары.
+// Cyrillic — кириллическая раскладка.
+func (l Lang) Cyrillic() bool { return l == RU || l == UK }
+
+// Включённые языки и «основная» кириллическая раскладка (та, что была последней).
+var (
+	langMu       sync.RWMutex
+	enabled      = []Lang{EN, RU}
+	preferredCyr atomic.Int32
+)
+
+func init() { preferredCyr.Store(int32(RU)) }
+
+// SetLanguages задаёт, между какими раскладками переключаться (английская есть всегда).
+func SetLanguages(ls []Lang) {
+	out := []Lang{EN}
+	for _, l := range ls {
+		if l.Cyrillic() && !containsLang(out, l) {
+			out = append(out, l)
+		}
+	}
+	if len(out) == 1 {
+		out = append(out, RU)
+	}
+	langMu.Lock()
+	enabled = out
+	langMu.Unlock()
+	if p := PreferredCyrillic(); !containsLang(out, p) {
+		preferredCyr.Store(int32(out[1]))
+	}
+}
+
+// Languages — включённые языки.
+func Languages() []Lang {
+	langMu.RLock()
+	defer langMu.RUnlock()
+	return append([]Lang(nil), enabled...)
+}
+
+// Enabled — включён ли язык.
+func Enabled(l Lang) bool { return containsLang(Languages(), l) }
+
+func containsLang(ls []Lang, l Lang) bool {
+	for _, x := range ls {
+		if x == l {
+			return true
+		}
+	}
+	return false
+}
+
+// SetPreferredCyrillic запоминает, какой кириллической раскладкой вы пользуетесь сейчас.
+func SetPreferredCyrillic(l Lang) {
+	if l.Cyrillic() && Enabled(l) {
+		preferredCyr.Store(int32(l))
+	}
+}
+
+// PreferredCyrillic — кириллическая раскладка, на которую переключать с английской.
+func PreferredCyrillic() Lang { return Lang(preferredCyr.Load()) }
+
+// Other — раскладка, на которую переключать вручную: с английской — на основную кириллическую,
+// с кириллической — на английскую.
 func (l Lang) Other() Lang {
-	switch l {
-	case EN:
-		return RU
-	case RU:
+	switch {
+	case l == EN:
+		return PreferredCyrillic()
+	case l.Cyrillic():
 		return EN
 	}
 	return Unknown
 }
 
-// ParseLang разбирает "ru"/"en".
+// Alternatives — в какие раскладки могло «должно было» попасть слово, набранное в cur.
+func Alternatives(cur Lang) []Lang {
+	var out []Lang
+	for _, l := range Languages() {
+		if l != cur {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// ParseLang разбирает "ru"/"en"/"uk".
 func ParseLang(s string) Lang {
-	switch s {
-	case "en", "EN":
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "en":
 		return EN
-	case "ru", "RU":
+	case "ru":
 		return RU
+	case "uk", "ua":
+		return UK
 	}
 	return Unknown
 }
@@ -106,9 +191,12 @@ const (
 
 type pair struct{ normal, shifted rune }
 
-var tables = [2]map[uint16]pair{
-	EN: {}, RU: {},
+var tables = [3]map[uint16]pair{
+	EN: {}, RU: {}, UK: {},
 }
+
+// runeKeys — обратные таблицы: символ -> нажатие (для конвертации готового текста).
+var runeKeys = [3]map[rune]Key{{}, {}, {}}
 
 func init() {
 	en := "qwertyuiopasdfghjklzxcvbnm"
@@ -120,15 +208,20 @@ func init() {
 		r := []rune(ru)[i]
 		tables[EN][vk] = pair{e, unicode.ToUpper(e)}
 		tables[RU][vk] = pair{r, unicode.ToUpper(r)}
+		tables[UK][vk] = pair{r, unicode.ToUpper(r)}
 	}
+	// Украинская раскладка отличается от русской: і вместо ы, ї вместо ъ, є вместо э,
+	// апостроф вместо ё, ґ на клавише \ (расширенная украинская раскладка).
+	tables[UK]['S'] = pair{'і', 'І'}
 	enDigitsShift := ")!@#$%^&*("
 	ruDigitsShift := ")!\"№;%:?*("
 	for d := 0; d <= 9; d++ {
 		vk := uint16('0' + d)
 		tables[EN][vk] = pair{rune('0' + d), []rune(enDigitsShift)[d]}
 		tables[RU][vk] = pair{rune('0' + d), []rune(ruDigitsShift)[d]}
+		tables[UK][vk] = pair{rune('0' + d), []rune(ruDigitsShift)[d]}
 	}
-	set := func(vk uint16, en, ru pair) { tables[EN][vk] = en; tables[RU][vk] = ru }
+	set := func(vk uint16, en, ru pair) { tables[EN][vk] = en; tables[RU][vk] = ru; tables[UK][vk] = ru }
 	set(VK_OEM_1, pair{';', ':'}, pair{'ж', 'Ж'})
 	set(VK_OEM_PLUS, pair{'=', '+'}, pair{'=', '+'})
 	set(VK_OEM_COMMA, pair{',', '<'}, pair{'б', 'Б'})
@@ -141,34 +234,24 @@ func init() {
 	set(VK_OEM_6, pair{']', '}'}, pair{'ъ', 'Ъ'})
 	set(VK_OEM_7, pair{'\'', '"'}, pair{'э', 'Э'})
 	set(VK_OEM_102, pair{'\\', '|'}, pair{'\\', '/'})
+	tables[UK][VK_OEM_6] = pair{'ї', 'Ї'}
+	tables[UK][VK_OEM_7] = pair{'є', 'Є'}
+	tables[UK][VK_OEM_3] = pair{'\'', '₴'}
+	tables[UK][VK_OEM_5] = pair{'ґ', 'Ґ'}
 
-	for vk, p := range tables[EN] {
-		q := tables[RU][vk]
-		addConv(p.normal, q.normal)
-		addConv(p.shifted, q.shifted)
-	}
-	// Буквы, набранные с CapsLock+Shift, дают строчные — их тоже нужно уметь переводить.
-	for vk := uint16('A'); vk <= 'Z'; vk++ {
-		p, q := tables[EN][vk], tables[RU][vk]
-		addConv(p.shifted, q.shifted)
-	}
-}
-
-// Таблицы посимвольной конвертации текста (для выделенного текста).
-var (
-	enToRu = map[rune]rune{}
-	ruToEn = map[rune]rune{}
-)
-
-func addConv(e, r rune) {
-	if e == r {
-		return
-	}
-	if _, ok := enToRu[e]; !ok {
-		enToRu[e] = r
-	}
-	if _, ok := ruToEn[r]; !ok {
-		ruToEn[r] = e
+	for _, l := range All {
+		for vk, p := range tables[l] {
+			for _, c := range []struct {
+				r     rune
+				shift bool
+			}{{p.normal, false}, {p.shifted, true}} {
+				// Предпочитаем нажатие без Shift и основной ряд (а не дубли вроде OEM_102).
+				if old, ok := runeKeys[l][c.r]; ok && (!old.Shift || c.shift) && old.VK != VK_OEM_102 {
+					continue
+				}
+				runeKeys[l][c.r] = Key{VK: vk, Shift: c.shift}
+			}
+		}
 	}
 }
 
@@ -189,7 +272,7 @@ func Render(k Key, l Lang) rune {
 	if k.VK == VK_SPACE {
 		return ' '
 	}
-	if l != EN && l != RU {
+	if l != EN && l != RU && l != UK {
 		l = EN
 	}
 	p, ok := tables[l][k.VK]
@@ -223,6 +306,9 @@ func RenderAll(keys []Key, l Lang) string {
 
 // IsLetterIn сообщает, даёт ли клавиша букву в раскладке l.
 func IsLetterIn(vk uint16, l Lang) bool {
+	if l < EN || l > UK {
+		return false
+	}
 	p, ok := tables[l][vk]
 	return ok && unicode.IsLetter(p.normal)
 }
@@ -232,59 +318,68 @@ func KeyForRune(r rune, l Lang) (Key, bool) {
 	if r == ' ' {
 		return Key{VK: VK_SPACE}, true
 	}
-	for vk, p := range tables[l] {
-		if p.normal == r {
-			return Key{VK: vk}, true
-		}
-		if p.shifted == r {
-			return Key{VK: vk, Shift: true}, true
-		}
+	if l < EN || l > UK {
+		return Key{}, false
 	}
-	return Key{}, false
+	k, ok := runeKeys[l][r]
+	return k, ok
 }
 
 // DetectTextLang определяет, в какой раскладке, скорее всего, набран текст:
 // по количеству кириллических и латинских букв.
 func DetectTextLang(s string) Lang {
-	ru, en := 0, 0
+	cyr, lat, ru, uk := 0, 0, 0, 0
 	for _, r := range s {
 		switch {
 		case unicode.Is(unicode.Cyrillic, r):
-			ru++
+			cyr++
+			switch unicode.ToLower(r) {
+			case 'ы', 'э', 'ъ', 'ё':
+				ru++
+			case 'і', 'ї', 'є', 'ґ':
+				uk++
+			}
 		case unicode.Is(unicode.Latin, r):
-			en++
+			lat++
 		}
 	}
-	if ru == 0 && en == 0 {
-		// Только знаки: решаем по тому, какие из них «чужие».
+	if cyr == 0 && lat == 0 {
+		// Только знаки: решаем по тому, какие из них «чужие» для кириллицы.
 		for _, r := range s {
-			if _, ok := enToRu[r]; ok {
-				en++
+			if k, ok := runeKeys[EN][r]; ok && Render(k, PreferredCyrillic()) != r {
+				return EN
 			}
-		}
-		if en > 0 {
-			return EN
 		}
 		return Unknown
 	}
-	if ru > en {
+	if cyr <= lat {
+		return EN
+	}
+	switch {
+	case uk > ru:
+		return UK
+	case ru > uk:
 		return RU
 	}
-	return EN
+	return PreferredCyrillic()
 }
 
-// ConvertText переводит текст, набранный в раскладке from, в другую раскладку.
-// Символы, одинаковые в обеих раскладках, остаются как есть.
-func ConvertText(s string, from Lang) string {
-	m := enToRu
-	if from == RU {
-		m = ruToEn
+// ConvertTextTo переводит текст, набранный в раскладке from, в раскладку to
+// (те же клавиши). Символы, которые в from не набрать, остаются как есть.
+func ConvertTextTo(s string, from, to Lang) string {
+	if from < EN || from > UK || to < EN || to > UK || from == to {
+		return s
 	}
 	out := []rune(s)
 	for i, r := range out {
-		if c, ok := m[r]; ok {
-			out[i] = c
+		if k, ok := runeKeys[from][r]; ok {
+			if c := Render(k, to); c != 0 {
+				out[i] = c
+			}
 		}
 	}
 	return string(out)
 }
+
+// ConvertText переводит текст из раскладки from в «парную» (from.Other()).
+func ConvertText(s string, from Lang) string { return ConvertTextTo(s, from, from.Other()) }

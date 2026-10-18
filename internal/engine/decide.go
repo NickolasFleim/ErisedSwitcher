@@ -15,6 +15,8 @@ type Verdict struct {
 	Switch   bool        `json:"switch"`
 	Reason   string      `json:"reason"`
 	CurLang  keymap.Lang `json:"-"`
+	AltLang  keymap.Lang `json:"-"`
+	AltName  string      `json:"alt_lang"`  // в какую раскладку переключить
 	Cur      string      `json:"cur"`       // как слово выглядит сейчас
 	Alt      string      `json:"alt"`       // как оно выглядело бы в другой раскладке
 	CurScore float64     `json:"cur_score"` // оценка букв текущего варианта
@@ -25,11 +27,57 @@ type Verdict struct {
 
 const badScore = -5.0
 
-// Decide решает, набрано ли слово (последовательность нажатий) не в той раскладке.
-// final=false — проверка на лету, посреди слова (строже).
-// prevAlt — предыдущее слово этой фразы написано на втором языке (контекст).
-func Decide(keys []keymap.Key, cur keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt bool) Verdict {
-	alt := cur.Other()
+// Decide решает, набрано ли слово (последовательность нажатий) не в той раскладке, и в какой
+// из включённых раскладок оно должно было быть. final=false — проверка на лету (строже).
+// prevLang — язык предыдущего слова фразы (контекст; Unknown — нет).
+func Decide(keys []keymap.Key, cur keymap.Lang, r *config.Effective, st *words.Store, final bool, prevLang keymap.Lang) Verdict {
+	var best *Verdict
+	var first Verdict
+	for i, alt := range keymap.Alternatives(cur) {
+		v := decidePair(keys, cur, alt, r, st, final, prevLang == alt)
+		v.AltLang, v.AltName = alt, alt.String()
+		if i == 0 || alt == cur.Other() {
+			first = v
+		}
+		if v.Switch && (best == nil || betterSwitch(v, *best)) {
+			vv := v
+			best = &vv
+		}
+	}
+	if best != nil {
+		return *best
+	}
+	if first.CurLang == 0 && first.Cur == "" { // нет альтернатив
+		first = Verdict{CurLang: cur, Cur: keymap.RenderAll(keys, cur), Reason: "нет других раскладок"}
+	}
+	return first
+}
+
+// betterSwitch — из двух подходящих раскладок выбрать лучшую: словарное слово лучше
+// статистики; между русским и украинским — та, которой вы пользуетесь, если другая
+// не намного частотнее; иначе — более частое слово.
+func betterSwitch(a, b Verdict) bool {
+	ad, bd := a.AltZipf > 0, b.AltZipf > 0
+	if ad != bd {
+		return ad
+	}
+	if a.AltLang.Cyrillic() && b.AltLang.Cyrillic() && ad {
+		pref := keymap.PreferredCyrillic()
+		switch {
+		case a.AltLang == pref && b.AltZipf < a.AltZipf+1.5:
+			return true
+		case b.AltLang == pref && a.AltZipf < b.AltZipf+1.5:
+			return false
+		}
+	}
+	if a.AltZipf != b.AltZipf {
+		return a.AltZipf > b.AltZipf
+	}
+	return a.AltScore > b.AltScore
+}
+
+// decidePair — набрано ли слово в cur, а должно было быть в alt.
+func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt bool) Verdict {
 	v := Verdict{CurLang: cur, Cur: keymap.RenderAll(keys, cur), Alt: keymap.RenderAll(keys, alt)}
 	if cur == keymap.Unknown {
 		v.Reason = "раскладка не определена"
@@ -76,6 +124,9 @@ func Decide(keys []keymap.Key, cur keymap.Lang, r *config.Effective, st *words.S
 			v.Reason = "слово в исключениях"
 			return v
 		}
+	}
+	if cur.Cyrillic() && alt.Cyrillic() {
+		return decideCyrillic(v, curCore, curOK, altCore, cur, alt, st, final)
 	}
 	cm, am := lang.Get(cur), lang.Get(alt)
 	v.CurScore = badScore
@@ -151,6 +202,45 @@ func Decide(keys []keymap.Key, cur keymap.Lang, r *config.Effective, st *words.S
 		return v
 	}
 	v.Reason = "по статистике букв уверенности недостаточно"
+	return v
+}
+
+// decideCyrillic — русский ↔ украинский. Раскладки отличаются всего несколькими буквами
+// (ы/і, ъ/ї, э/є, ё/'), а языки похожи, поэтому только по словарю и только в конце слова:
+// второй вариант должен быть известным словом, а набранный — нет.
+func decideCyrillic(v Verdict, curCore string, curOK bool, altCore string, cur, alt keymap.Lang, st *words.Store, final bool) Verdict {
+	switch {
+	case v.Cur == v.Alt:
+		v.Reason = "в обеих раскладках одинаково"
+		return v
+	case !final:
+		v.Reason = "русский и украинский различаем только по целому слову"
+		return v
+	}
+	cm, am := lang.Get(cur), lang.Get(alt)
+	if curOK {
+		v.CurScore = cm.CharScore(curCore, true)
+		if z, in := cm.Zipf(curCore); in {
+			v.CurZipf = z
+		}
+		if cm.Exists(curCore) || (st != nil && st.IsWord(cur, curCore)) {
+			v.Reason = "текущий вариант — существующее слово"
+			return v
+		}
+	}
+	v.AltScore = am.CharScore(altCore, true)
+	if z, in := am.Zipf(altCore); in {
+		v.AltZipf = z
+	}
+	if st != nil && st.IsWord(alt, altCore) {
+		v.Switch, v.Reason = true, "второй вариант — ваше слово"
+		return v
+	}
+	if v.AltZipf > 0 && len([]rune(altCore)) >= 2 {
+		v.Switch, v.Reason = true, "слово набрано в другой кириллической раскладке"
+		return v
+	}
+	v.Reason = "второго варианта нет в словаре"
 	return v
 }
 

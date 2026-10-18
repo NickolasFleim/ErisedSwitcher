@@ -31,11 +31,7 @@ func (a *App) initPredict() {
 	a.eng.SetPredictor(a.pred)
 	a.popup = win.NewPopup(a.onPopupClick)
 	// Индекс похожих слов строится ~1 с — в фоне, чтобы первое исправление не ждало.
-	go func() {
-		for _, l := range []keymap.Lang{keymap.RU, keymap.EN} {
-			lang.Get(l).PrepareSimilar()
-		}
-	}()
+	go prepareSimilar()
 }
 
 // pushSuggestions передаёт полоске текущие варианты (вызывается из потока перехвата).
@@ -122,3 +118,10 @@ func (a *App) HistoryForget(l, prev, next string) error {
 
 // Predictor — для вкладки «Проверка».
 func (a *App) Predictor() *predict.Predictor { return a.pred }
+
+// prepareSimilar строит индексы похожих слов для включённых языков (в фоне, ~1 с на язык).
+func prepareSimilar() {
+	for _, l := range keymap.Languages() {
+		lang.Get(l).PrepareSimilar()
+	}
+}

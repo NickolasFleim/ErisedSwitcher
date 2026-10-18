@@ -133,6 +133,8 @@ func LangOf(h HKL) keymap.Lang {
 		return keymap.RU
 	case 0x09:
 		return keymap.EN
+	case 0x22:
+		return keymap.UK
 	}
 	return keymap.Unknown
 }

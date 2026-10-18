@@ -69,7 +69,7 @@ func SelfTest(reportPath string) int {
 	st := words.New(filepath.Join(config.Dir(), "words.json"))
 	t0 := time.Now()
 	lang.Preload()
-	for _, l := range []keymap.Lang{keymap.RU, keymap.EN} {
+	for _, l := range keymap.All {
 		lang.Get(l).PrepareSimilar()
 	}
 	fmt.Fprintf(&out, "      словари загружены за %v\n", time.Since(t0).Round(time.Millisecond))

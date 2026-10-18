@@ -31,10 +31,10 @@ func init() {
 }
 
 // runePos — где на клавиатуре буква r в раскладке l.
-var runePos = [2]map[rune]pos{{}, {}}
+var runePos = [3]map[rune]pos{{}, {}, {}}
 
 func init() {
-	for _, l := range []keymap.Lang{keymap.EN, keymap.RU} {
+	for _, l := range keymap.All {
 		for vk, p := range keyPos {
 			k := keymap.Key{VK: vk}
 			if r := keymap.Render(k, l); r != 0 {
@@ -45,7 +45,7 @@ func init() {
 }
 
 func adjacent(a, b rune, l keymap.Lang) bool {
-	if l != keymap.EN && l != keymap.RU {
+	if l < keymap.EN || l > keymap.UK {
 		return false
 	}
 	pa, ok1 := runePos[l][a]
@@ -77,6 +77,8 @@ func subCost(a, b rune, l keymap.Lang) float64 {
 		return 0
 	case (a == 'е' && b == 'ё') || (a == 'ё' && b == 'е'):
 		return costSubYo
+	case l == keymap.UK && ((a == 'и' && b == 'і') || (a == 'і' && b == 'и') || (a == 'е' && b == 'є') || (a == 'є' && b == 'е')):
+		return 0.4 // частая путаница в украинском
 	case adjacent(a, b, l):
 		return costSubAdjacent
 	}

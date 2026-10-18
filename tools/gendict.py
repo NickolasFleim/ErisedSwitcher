@@ -18,32 +18,50 @@ SPECS = {
     # язык: (файл, регулярка допустимого слова, мин. число вхождений, максимум слов)
     "ru": ("ru/ru_full.txt", re.compile(r"^[а-яё]+(-[а-яё]+)?$"), 8, 150000),
     "en": ("en/en_full.txt", re.compile(r"^[a-z]+('[a-z]+)?$"), 15, 90000),
+    # Украинский: без ё ы ъ э (так отсекаются русские слова в субтитрах).
+    "uk": ("uk/uk_full.txt", re.compile(r"^[а-щьюяєіїґ]+([-'][а-щьюяєіїґ]+)?$"), 3, 120000),
+}
+
+# Слова с апострофом в корпусе разрезаны токенизатором — добавляем частые вручную (zipf ~ частотность).
+UK_APOSTROPHE = {
+    "п'ять": 4.6, "ім'я": 4.6, "сім'я": 4.3, "сім'ї": 4.1, "пам'ять": 4.0, "пам'яті": 3.8, "дев'ять": 4.0,
+    "м'ясо": 3.6, "м'який": 3.4, "м'яко": 3.3, "м'яч": 3.3, "об'єкт": 3.4, "об'єкти": 3.0, "з'явився": 3.6,
+    "з'явилася": 3.4, "з'явилися": 3.3, "з'ясувати": 3.5, "з'ясуємо": 3.0, "комп'ютер": 3.8, "комп'ютера": 3.4,
+    "п'ятниця": 3.4, "п'ятницю": 3.2, "п'ятдесят": 3.6, "п'яний": 3.5, "п'яна": 3.2, "п'ю": 3.3, "п'єш": 3.0,
+    "з'їсти": 3.3, "з'їв": 3.2, "під'їзд": 3.0, "від'їзд": 2.8, "об'єднання": 3.2, "об'єм": 2.9, "бур'ян": 2.6,
+    "з'єднання": 3.0, "зв'язок": 3.7, "зв'язку": 3.6, "зв'язатися": 3.2, "здоров'я": 3.9, "м'ята": 2.7,
+    "п'єса": 2.9, "в'язниця": 3.2, "в'язниці": 3.2, "дзвін": 3.0, "ім'ям": 3.4, "пір'я": 2.8, "сім'ю": 3.8,
+    "сім'єю": 3.4, "п'ятеро": 3.2, "дев'яносто": 3.3, "п'ятий": 3.4, "дев'ятий": 3.0, "м'язи": 3.0,
+    "з'їздити": 2.8, "об'їхати": 2.7, "роз'яснити": 2.8, "солов'ї": 2.5, "кав'ярня": 3.0, "інтерв'ю": 3.4,
+    "прем'єр": 3.0, "прем'єра": 3.0, "з'являється": 3.3, "м'ясом": 2.9,
 }
 
 
 EN_KEYS = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
 RU_KEYS = "йцукенгшщзхъфывапролджэячсмитьбюё"
-CONV = {"en": dict(zip(EN_KEYS, RU_KEYS)), "ru": dict(zip(RU_KEYS, EN_KEYS))}
+UK_KEYS = "йцукенгшщзхїфівапролджєячсмитьбю'"
+CONV = {"en": dict(zip(EN_KEYS, RU_KEYS)), "ru": dict(zip(RU_KEYS, EN_KEYS)), "uk": dict(zip(UK_KEYS, EN_KEYS))}
+CONV_EN_UK = dict(zip(EN_KEYS, UK_KEYS))
 
 
 def clean(dicts):
     """Субтитры содержат «слова», набранные не в той раскладке (lf = да, ещ = to).
     Короткое слово убираем, если его двойник в другом языке намного частотнее."""
-    drops = {}
-    for lang, other in (("ru", "en"), ("en", "ru")):
+    drops = {"ru": set(), "en": set(), "uk": set()}
+    for lang, other in (("ru", "en"), ("en", "ru"), ("uk", "en"), ("en", "uk")):
         d, o = dicts[lang], dicts[other]
-        drop = set()
+        drop = drops[lang]
+        conv = CONV_EN_UK if (lang, other) == ("en", "uk") else CONV[lang]
         for w, z in d.items():
             if len(w) > 3:
                 continue
-            t = "".join(CONV[lang].get(c, "?") for c in w)
+            t = "".join(conv.get(c, "?") for c in w)
             zt = o.get(t)
             if zt is None:
                 continue
             margin = zt - z
             if margin >= 2.5 or (z <= 3.0 and margin >= 1.5):
                 drop.add(w)
-        drops[lang] = drop
     for lang, drop in drops.items():
         for w in drop:
             del dicts[lang][w]
@@ -108,12 +126,16 @@ def main() -> None:
                     w = parts[0].lower()
                     if rx.match(w):
                         known.add(w)
-        write_known(dst / f"{lang}.known", known)
         seen = {}
         for w, c in rows:
             seen[w] = seen.get(w, 0) + c
         items = sorted(seen.items(), key=lambda x: -x[1])[:maxwords]
         dicts[lang] = {w: round(math.log10(c / total * 1e9), 1) for w, c in items}
+        if lang == "uk":
+            for w, z in UK_APOSTROPHE.items():
+                dicts[lang].setdefault(w, z)
+                known.add(w)
+        write_known(dst / f"{lang}.known", known)
     clean(dicts)
     for lang, d in dicts.items():
         out = dst / f"{lang}.txt.gz"

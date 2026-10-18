@@ -118,11 +118,11 @@ td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: mid
 td.word { font-family: var(--mono); }
 td .btn { margin-right: 4px; }
 .lang { display: inline-block; min-width: 26px; text-align: center; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 4px; }
-.lang.en { background: var(--en); } .lang.ru { background: var(--ru); }
+.lang.en { background: var(--en); } .lang.ru { background: var(--ru); } .lang.uk { background: #b7791f; }
 .filters { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
 .filters input, .filters select { max-width: 260px; }
 .empty { color: var(--muted); padding: 18px 0; }
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 
 /* Проверка: слова-клавиши */
 .probe textarea { min-height: 80px; font-family: inherit; font-size: 16px; }
@@ -133,7 +133,7 @@ td .btn { margin-right: 4px; }
 }
 .cap .from { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 .cap .to { font-size: 18px; font-weight: 600; }
-.cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); }
+.cap.sw-ru { border-bottom-color: var(--ru); } .cap.sw-en { border-bottom-color: var(--en); } .cap.sw-uk { border-bottom-color: #b7791f; }
 .cap .why { font-size: 12px; color: var(--muted); max-width: 240px; margin-top: 4px; }
 .cap .nums { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
 .crash summary { cursor: pointer; padding: 6px 0; }
@@ -471,8 +471,11 @@ function renderGeneral(m) {
       g("process_injected", "bool", "Обрабатывать нажатия от других программ", "Например, от AutoHotkey или экранной клавиатуры."),
       g("double_tap_ms", "int", "Двойное нажатие: окно, мс", "Сколько может пройти между нажатиями для DoubleShift.")),
     el("div", { class: "group" },
-      el("h3", {}, "Раскладки"),
+      el("h3", {}, "Языки и раскладки"),
+      g("languages", "select", "Между какими языками переключать", "«Автоматически» — по раскладкам, установленным в Windows. Если включены и русский, и украинский, программа сама выбирает, какой из них подходит слову; с английского переключает на ту кириллицу, которой вы пользовались последней.",
+        [["auto", "Автоматически"], ["en,ru", "Английский и русский"], ["en,uk", "Английский и украинский"], ["en,ru,uk", "Английский, русский и украинский"]]),
       g("layout_ru", "text", "Русская раскладка", "Пусто — найти автоматически. Можно указать код, например 00000419."),
+      g("layout_uk", "text", "Украинская раскладка", "Например 00020422 (украинская расширенная) или 00000422."),
       g("layout_en", "text", "Английская раскладка", "Например 00000409 (США) или 00000809 (Великобритания).")),
     el("div", { class: "group" },
       el("h3", {}, "Значок и журнал"),
@@ -637,15 +640,16 @@ function wordsArea(label, help, obj, lang) {
 }
 function renderDict(m) {
   const w = wordsState();
-  w.user ||= { ru: [], en: [] }; w.exceptions ||= { ru: [], en: [] }; w.autoreplace ||= []; w.ignored ||= { ru: [], en: [] };
+  for (const k of ["user", "exceptions", "ignored"]) { w[k] ||= {}; for (const l of ["ru", "uk", "en"]) w[k][l] ||= []; }
+  w.autoreplace ||= [];
   m.append(el("h2", {}, "Словарь"),
     el("p", { class: "lead" }, "По одному слову в строке. Повторы и регистр убираются при сохранении."),
     el("div", { class: "group" }, el("h3", {}, "Свои слова"),
       el("p", { class: "help" }, "Всегда считаются правильными в своём языке. Если такое слово набрано не в той раскладке — исправляется."),
-      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.user, "ru"), wordsArea("", "Английские", w.user, "en"))),
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.user, "ru"), wordsArea("", "Украинские", w.user, "uk"), wordsArea("", "Английские", w.user, "en"))),
     el("div", { class: "group" }, el("h3", {}, "Исключения"),
       el("p", { class: "help" }, "Так написанное слово никогда не исправляется. Пишите так, как оно выглядит на экране: «ghbdtn» в английском столбце, если не хотите превращать его в «привет»."),
-      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Набрано в русской раскладке", w.exceptions, "ru"), wordsArea("", "Набрано в английской раскладке", w.exceptions, "en"))));
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Набрано в русской раскладке", w.exceptions, "ru"), wordsArea("", "Набрано в украинской раскладке", w.exceptions, "uk"), wordsArea("", "Набрано в английской раскладке", w.exceptions, "en"))));
   const tb = el("tbody");
   const redraw = () => {
     tb.replaceChildren(...w.autoreplace.map((r, i) => el("tr", {},
@@ -662,7 +666,7 @@ function renderDict(m) {
     el("div", { class: "actions", style: "padding:12px 0" }, el("button", { class: "btn small", onclick: () => { w.autoreplace.push({ from: "", to: "" }); redraw(); } }, "Добавить автозамену"))),
     el("div", { class: "group" }, el("h3", {}, "Не собирать"),
       el("p", { class: "help" }, "Слова, которые вы удалили из собранных. Автоматический сбор их больше не добавит."),
-      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.ignored, "ru"), wordsArea("", "Английские", w.ignored, "en"))),
+      el("div", { class: "cols", style: "padding-bottom:14px" }, wordsArea("", "Русские", w.ignored, "ru"), wordsArea("", "Украинские", w.ignored, "uk"), wordsArea("", "Английские", w.ignored, "en"))),
     el("div", { class: "actions" }, el("button", { class: "btn primary", onclick: () => saveWords() }, "Сохранить словарь"),
       el("button", { class: "btn", onclick: () => { W = null; render(); } }, "Отменить изменения")));
 }
@@ -719,7 +723,7 @@ function renderProbe(m) {
         out.replaceChildren(...res.map(r => {
           const f = r.final;
           if (r.error) return el("div", { class: "cap" }, el("div", { class: "from" }, r.word), el("div", { class: "why" }, r.error));
-          const target = r.typed_in === "en" ? "ru" : "en";
+          const target = f.alt_lang || (r.typed_in === "en" ? "ru" : "en");
           return el("div", { class: "cap" + (f.switch ? " sw-" + target : "") },
             el("div", { class: "from" }, r.word + "  ·  " + r.typed_in.toUpperCase()),
             el("div", { class: "to" }, f.switch ? f.alt : (r.typo && r.typo.applied ? r.typo.best : r.word)),

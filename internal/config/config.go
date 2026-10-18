@@ -215,6 +215,9 @@ type Config struct {
 	// Явно заданные раскладки (HKL/KLID, например "00000419"); пусто — найти автоматически.
 	LayoutRU string `json:"layout_ru"`
 	LayoutEN string `json:"layout_en"`
+	LayoutUK string `json:"layout_uk"`
+	// Языки: "auto" — по установленным раскладкам, или список: "en,ru", "en,uk", "en,ru,uk".
+	Languages string `json:"languages"`
 	// Где открывать настройки: "window" — отдельное окно программы, "browser" — в браузере.
 	UIMode string `json:"ui_mode"`
 	// Установку уже предлагали (больше не спрашивать).
@@ -249,6 +252,7 @@ func Default() *Config {
 		SkipPasswords:   true,
 		TrayShowsLayout: true,
 		UIMode:          "window",
+		Languages:       "auto",
 		LogSize:         200,
 		Defaults: Rule{
 			Mode:                     ptr("auto"),
@@ -625,6 +629,12 @@ func (c *Config) Validate() []string {
 		}
 	}
 	errs = append(errs, c.hotkeyConflicts()...)
+	if c.Languages != "auto" && strings.TrimSpace(c.Languages) != "" {
+		for _, part := range strings.Split(c.Languages, ",") {
+			p := strings.TrimSpace(strings.ToLower(part))
+			check(p == "en" || p == "ru" || p == "uk" || p == "ua", "Языки: auto или список из en, ru, uk через запятую")
+		}
+	}
 	check(c.UIMode == "window" || c.UIMode == "browser", "Где открывать настройки: window или browser")
 	check(c.Update.IntervalHours >= 1 && c.Update.IntervalHours <= 720, "Проверять обновления: раз в 1–720 часов")
 	if parts := strings.Split(c.Update.Repo, "/"); len(parts) != 2 || parts[0] == "" || parts[1] == "" {

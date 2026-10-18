@@ -87,9 +87,9 @@ func New(path string) *Store {
 
 func emptyData() Data {
 	return Data{
-		User:       map[string][]string{"ru": {}, "en": {}},
-		Exceptions: map[string][]string{"ru": {}, "en": {}},
-		Ignored:    map[string][]string{"ru": {}, "en": {}},
+		User:       map[string][]string{"ru": {}, "en": {}, "uk": {}},
+		Exceptions: map[string][]string{"ru": {}, "en": {}, "uk": {}},
+		Ignored:    map[string][]string{"ru": {}, "en": {}, "uk": {}},
 	}
 }
 
@@ -130,7 +130,7 @@ func (s *Store) SetData(d Data) {
 		d.Ignored = map[string][]string{}
 	}
 	for _, m := range []map[string][]string{d.User, d.Exceptions, d.Ignored} {
-		for _, l := range []string{"ru", "en"} {
+		for _, l := range []string{"ru", "en", "uk"} {
 			m[l] = dedupe(m[l])
 		}
 	}

@@ -145,7 +145,7 @@ type App struct {
 
 	// Поля ниже меняются из разных потоков — под mu.
 	mu               sync.Mutex
-	hkl              [2]win.HKL
+	hkl              [3]win.HKL
 	cfgMod, wordsMod time.Time
 	lastSave         time.Time
 }
@@ -228,8 +228,8 @@ func Run() int {
 	go lang.Preload()
 	a.eng = engine.New(cfg, st)
 	a.eng.SetLogger(a.addLog)
+	a.findLayouts() // до подсказок: от включённых языков зависит, какие индексы строить
 	a.initPredict()
-	a.findLayouts()
 
 	a.hwnd = win.CreateMessageWindow(className, syscallCallback(a.wndProc))
 	a.taskbarCreated = win.RegisterWindowMessage("TaskbarCreated")
@@ -313,21 +313,38 @@ func copyFile(src, dst string) error {
 
 func (a *App) findLayouts() {
 	cfg := a.cfg.Load()
-	en := win.FindLayout(keymap.EN, cfg.LayoutEN)
-	ru := win.FindLayout(keymap.RU, cfg.LayoutRU)
-	var parts []string
-	if ru == 0 {
-		parts = append(parts, "русская не найдена")
-	} else {
-		parts = append(parts, fmt.Sprintf("RU %08X", uint32(ru)))
+	hkl := [3]win.HKL{
+		keymap.EN: win.FindLayout(keymap.EN, cfg.LayoutEN),
+		keymap.RU: win.FindLayout(keymap.RU, cfg.LayoutRU),
+		keymap.UK: win.FindLayout(keymap.UK, cfg.LayoutUK),
 	}
-	if en == 0 {
-		parts = append(parts, "английская не найдена")
+	// Какие языки включены: заданы в настройках или те, чьи раскладки установлены в Windows.
+	var langs []keymap.Lang
+	if strings.TrimSpace(cfg.Languages) == "" || cfg.Languages == "auto" {
+		for _, l := range []keymap.Lang{keymap.RU, keymap.UK} {
+			if hkl[l] != 0 {
+				langs = append(langs, l)
+			}
+		}
 	} else {
-		parts = append(parts, fmt.Sprintf("EN %08X", uint32(en)))
+		for _, part := range strings.Split(cfg.Languages, ",") {
+			if l := keymap.ParseLang(part); l != keymap.Unknown {
+				langs = append(langs, l)
+			}
+		}
+	}
+	keymap.SetLanguages(langs)
+	names := map[keymap.Lang]string{keymap.EN: "английская", keymap.RU: "русская", keymap.UK: "украинская"}
+	var parts []string
+	for _, l := range keymap.Languages() {
+		if hkl[l] == 0 {
+			parts = append(parts, names[l]+" не найдена")
+		} else {
+			parts = append(parts, fmt.Sprintf("%s %08X", strings.ToUpper(l.String()), uint32(hkl[l])))
+		}
 	}
 	a.mu.Lock()
-	a.hkl[keymap.EN], a.hkl[keymap.RU] = en, ru
+	a.hkl = hkl
 	a.layoutsDesc = strings.Join(parts, ", ")
 	a.mu.Unlock()
 	log.Printf("раскладки: %s", strings.Join(parts, ", "))
@@ -571,6 +588,7 @@ func (a *App) currentLang(info *win.WindowInfo, rule *config.Effective) keymap.L
 	}
 	if l != keymap.Unknown {
 		a.setTracked(l)
+		keymap.SetPreferredCyrillic(l) // какой кириллицей пользуетесь — на ту и переключаем с английской
 	} else {
 		l = a.getTracked()
 	}
@@ -645,7 +663,7 @@ func (a *App) execute(j job) {
 }
 
 func (a *App) switchTo(info win.WindowInfo, l keymap.Lang) {
-	if l != keymap.EN && l != keymap.RU {
+	if l < keymap.EN || l > keymap.UK {
 		return
 	}
 	a.mu.Lock()
@@ -780,8 +798,9 @@ func (a *App) applyConfig(c *config.Config, save bool) error {
 	if c.Enabled != a.eng.Enabled() {
 		a.eng.SetEnabled(c.Enabled)
 	}
-	if c.LayoutEN != old.LayoutEN || c.LayoutRU != old.LayoutRU {
+	if c.LayoutEN != old.LayoutEN || c.LayoutRU != old.LayoutRU || c.LayoutUK != old.LayoutUK || c.Languages != old.Languages {
 		a.findLayouts()
+		go prepareSimilar()
 	}
 	if c.Autostart != old.Autostart || c.Autostart != win.AutostartEnabled(autostartName) {
 		a.applyAutostart(c.Autostart)
@@ -866,6 +885,8 @@ func (a *App) refreshIcon(force bool) {
 			text, bg = "EN", trayicon.BlueEN
 		case keymap.RU:
 			text, bg = "RU", trayicon.RedRU
+		case keymap.UK:
+			text, bg = "UA", trayicon.Amber
 		}
 	} else {
 		text, bg = "EN", trayicon.BlueEN
@@ -1115,13 +1136,16 @@ func (a *App) SaveWords() error {
 
 // Status — сведения для окна настроек.
 func (a *App) Status() map[string]any {
-	en, ru := lang.Get(keymap.EN), lang.Get(keymap.RU)
+	var dict []string
+	for _, l := range keymap.Languages() {
+		dict = append(dict, fmt.Sprintf("%d %s", lang.Get(l).Size(), strings.ToUpper(l.String())))
+	}
 	return map[string]any{
 		"version":  Version,
 		"enabled":  a.eng.Enabled(),
 		"admin":    win.IsAdmin(),
 		"layouts":  a.layoutsText(),
-		"dict":     fmt.Sprintf("%d RU, %d EN слов", ru.Size(), en.Size()),
+		"dict":     strings.Join(dict, ", ") + " слов",
 		"data_dir": a.dir,
 	}
 }

@@ -370,10 +370,10 @@ func (e *Engine) handleKey(ev KeyEvent, ctx *Context) Result {
 	if r.Mode == "auto" && r.EarlySwitch && !e.cur.corrected && !e.cur.mixed &&
 		e.cur.lang != keymap.Unknown && len(e.cur.keys)+1 >= r.EarlyMinLen {
 		keys := append(append([]keymap.Key(nil), e.cur.keys...), k)
-		v := Decide(keys, e.cur.lang, r, e.store, false, false)
+		v := Decide(keys, e.cur.lang, r, e.store, false, keymap.Unknown)
 		e.log("на лету", ctx, v)
 		if v.Switch {
-			alt := e.cur.lang.Other()
+			alt := v.AltLang
 			c := &correction{origKeys: keys, origLang: e.cur.lang, newLang: alt, newLen: len(keys), auto: true, histIdx: -1}
 			act := Action{Kind: ActReplace, Backspaces: len(e.cur.keys), Text: keymap.RenderAll(keys, alt),
 				Keys: keys, Target: e.targetFor(r, alt), Reason: v.Reason}
@@ -536,14 +536,14 @@ func (e *Engine) boundary(vk uint16, check bool, layout keymap.Lang, ctx *Contex
 		return finish(e.finishWord(t, vk, newLine, ctx))
 	}
 
-	prevAlt := false
+	prevLang := keymap.Unknown
 	if n := len(e.hist); n > 0 && e.hist[n-1].trail == keymap.VK_SPACE && len(e.hist[n-1].keys) > 0 {
-		prevAlt = e.hist[n-1].lang == t.lang.Other()
+		prevLang = e.hist[n-1].lang
 	}
-	v := Decide(t.keys, t.lang, r, e.store, true, prevAlt)
+	v := Decide(t.keys, t.lang, r, e.store, true, prevLang)
 	e.log("конец слова", ctx, v)
 	if v.Switch {
-		alt := t.lang.Other()
+		alt := v.AltLang
 		c := &correction{origKeys: t.keys, origLang: t.lang, newLang: alt, newLen: len(t.keys), trail: vk, auto: true, histIdx: len(e.hist)}
 		act := Action{Kind: ActReplace, Backspaces: len(t.keys), Text: keymap.RenderAll(t.keys, alt), Keys: t.keys,
 			Target: e.targetFor(r, alt), Trail: []uint16{vk}, Reason: v.Reason}
@@ -690,6 +690,18 @@ func renderPhrase(keys []keymap.Key, langs []keymap.Lang) string {
 // convertWord — ручная конвертация последнего слова (двойной Shift).
 func (e *Engine) convertWord(ctx *Context) Result {
 	if e.fresh && e.last != nil {
+		// При трёх языках повторные нажатия перебирают раскладки по кругу, в конце — исходная.
+		if c := e.last; c.manual && len(c.origLangs) == 0 && len(keymap.Languages()) > 2 {
+			// Раскладки, где слово выглядит так же, пропускаем — иначе нажатие ничего бы не изменило.
+			shown := keymap.RenderAll(c.origKeys, c.newLang)
+			next := cycleNext(c.origLang, c.newLang)
+			for next != c.origLang && keymap.RenderAll(c.origKeys, next) == shown {
+				next = cycleNext(c.origLang, next)
+			}
+			if next != c.origLang {
+				return e.recycle(c, next, ctx)
+			}
+		}
 		// Повторное нажатие сразу после исправления — вернуть как было.
 		return e.undo(ctx, false)
 	}
@@ -752,6 +764,43 @@ func (e *Engine) convertWord(ctx *Context) Result {
 	t.lang, t.mixed, t.corrected = to, false, true
 	e.last, e.fresh = c, true
 	e.log("вручную", ctx, Verdict{CurLang: from, Cur: keymap.RenderAll(c.origKeys, from), Alt: act.Text, Reason: "ручная конвертация"})
+	return Result{Actions: []Action{act}}
+}
+
+// cycleNext — следующая раскладка в круге: исходная, «парная», остальные.
+func cycleNext(orig, cur keymap.Lang) keymap.Lang {
+	cycle := []keymap.Lang{orig, orig.Other()}
+	for _, l := range keymap.Alternatives(orig) {
+		if l != orig.Other() {
+			cycle = append(cycle, l)
+		}
+	}
+	for i, l := range cycle {
+		if l == cur {
+			return cycle[(i+1)%len(cycle)]
+		}
+	}
+	return orig
+}
+
+// recycle — заменить только что сконвертированное слово тем же набором клавиш в раскладке next.
+func (e *Engine) recycle(c *correction, next keymap.Lang, ctx *Context) Result {
+	n := c.newLen
+	var trail []uint16
+	if c.trail != 0 {
+		n++
+		trail = []uint16{c.trail}
+	}
+	act := Action{Kind: ActReplace, Backspaces: n, Text: keymap.RenderAll(c.origKeys, next), Keys: c.origKeys,
+		Target: next, Trail: trail, Reason: "ручная конвертация"}
+	switch {
+	case c.histIdx == -1:
+		e.cur.lang = next
+	case c.histIdx >= 0 && c.histIdx < len(e.hist):
+		e.hist[c.histIdx].lang = next
+	}
+	c.newLang, c.newLen = next, len([]rune(act.Text))
+	e.fresh = true
 	return Result{Actions: []Action{act}}
 }
 
@@ -848,7 +897,7 @@ func (e *Engine) runHotkey(a HotkeyAction, ctx *Context) Result {
 		l := e.effectiveLayout(ctx)
 		e.resetWord()
 		if l == keymap.Unknown {
-			l = keymap.RU
+			l = keymap.EN
 		}
 		return Result{Swallow: true, Actions: []Action{{Kind: ActSwitchLayout, Target: l.Other()}}}
 	}

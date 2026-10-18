@@ -16,7 +16,7 @@ import (
 	"erised/internal/keymap"
 )
 
-//go:embed data/ru.txt.gz data/en.txt.gz data/ru.known data/en.known
+//go:embed data/ru.txt.gz data/en.txt.gz data/uk.txt.gz data/ru.known data/en.known data/uk.known
 var dataFS embed.FS
 
 // Model — словарь одного языка и триграммная модель букв.
@@ -41,7 +41,7 @@ type Model struct {
 
 var (
 	once   sync.Once
-	models [2]*Model
+	models [3]*Model
 	ready  atomic.Bool
 )
 
@@ -51,7 +51,7 @@ func Ready() bool { return ready.Load() }
 // Get возвращает модель языка (загружается один раз при первом обращении).
 func Get(l keymap.Lang) *Model {
 	once.Do(load)
-	if l != keymap.EN && l != keymap.RU {
+	if l < keymap.EN || l > keymap.UK {
 		return nil
 	}
 	return models[l]
@@ -62,7 +62,7 @@ func Preload() { once.Do(load) }
 
 func load() {
 	var wg sync.WaitGroup
-	for _, l := range []keymap.Lang{keymap.EN, keymap.RU} {
+	for _, l := range keymap.All {
 		wg.Add(1)
 		go func(l keymap.Lang) {
 			defer wg.Done()
@@ -202,7 +202,8 @@ func (m *Model) CharScore(w string, complete bool) float64 {
 func (m *Model) Size() int { return len(m.words) }
 
 // Core выделяет «ядро» слова: убирает знаки по краям, приводит к нижнему регистру.
-// ok=false, если внутри ядра есть не-буквы (кроме дефиса, а для английского — апострофа).
+// ok=false, если внутри ядра есть не-буквы (кроме дефиса и апострофа в английском и украинском).
+// Украинский апостроф (’ или ʼ) приводится к обычному «'».
 func Core(s string, l keymap.Lang) (string, bool) {
 	rs := []rune(s)
 	i, j := 0, len(rs)
@@ -215,10 +216,10 @@ func Core(s string, l keymap.Lang) (string, bool) {
 	if i == j {
 		return "", false
 	}
-	core := rs[i:j]
-	for _, r := range core {
+	core := append([]rune(nil), rs[i:j]...)
+	for k, r := range core {
 		if unicode.IsLetter(r) {
-			if l == keymap.RU && !unicode.Is(unicode.Cyrillic, r) {
+			if l.Cyrillic() && !unicode.Is(unicode.Cyrillic, r) {
 				return "", false
 			}
 			if l == keymap.EN && !unicode.Is(unicode.Latin, r) {
@@ -226,7 +227,11 @@ func Core(s string, l keymap.Lang) (string, bool) {
 			}
 			continue
 		}
-		if r == '-' || (r == '\'' && l == keymap.EN) {
+		if l == keymap.UK && (r == '’' || r == 'ʼ') {
+			core[k] = '\''
+			continue
+		}
+		if r == '-' || (r == '\'' && (l == keymap.EN || l == keymap.UK)) {
 			continue
 		}
 		return "", false

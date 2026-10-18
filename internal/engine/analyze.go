@@ -41,7 +41,7 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *pr
 	tmp := &Engine{cfg: cfg, store: st, pred: pred, forced: keymap.Unknown}
 	var out []AnalyzeResult
 	lang.Preload()
-	for _, l := range []keymap.Lang{keymap.RU, keymap.EN} {
+	for _, l := range keymap.All {
 		lang.Get(l).PrepareSimilar() // здесь можно и подождать
 	}
 	for wi, w := range strings.Fields(text) {
@@ -61,13 +61,13 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *pr
 			keys = append(keys, k)
 		}
 		if res.Error == "" {
-			res.Final = Decide(keys, l, &r, st, true, false)
+			res.Final = Decide(keys, l, &r, st, true, keymap.Unknown)
 			if r.EarlySwitch {
 				for i := r.EarlyMinLen; i < len(keys); i++ {
 					if i < 1 {
 						continue
 					}
-					v := Decide(keys[:i], l, &r, st, false, false)
+					v := Decide(keys[:i], l, &r, st, false, keymap.Unknown)
 					if v.Switch {
 						res.Early, res.EarlyAt = &v, i
 						break
