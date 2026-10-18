@@ -34,7 +34,7 @@ func Decide(keys []keymap.Key, cur keymap.Lang, r *config.Effective, st *words.S
 	var best *Verdict
 	var first Verdict
 	for i, alt := range keymap.Alternatives(cur) {
-		v := decidePair(keys, cur, alt, r, st, final, prevLang == alt)
+		v := decidePair(keys, cur, alt, r, st, final, prevLang == alt, prevLang == keymap.Unknown)
 		v.AltLang, v.AltName = alt, alt.String()
 		if i == 0 || alt == cur.Other() {
 			first = v
@@ -77,7 +77,7 @@ func betterSwitch(a, b Verdict) bool {
 }
 
 // decidePair — набрано ли слово в cur, а должно было быть в alt.
-func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt bool) Verdict {
+func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st *words.Store, final, prevAlt, start bool) Verdict {
 	v := Verdict{CurLang: cur, Cur: keymap.RenderAll(keys, cur), Alt: keymap.RenderAll(keys, alt)}
 	if cur == keymap.Unknown {
 		v.Reason = "раскладка не определена"
@@ -114,7 +114,7 @@ func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st
 		return v
 	}
 	n := len([]rune(altCore))
-	single := n == 1 && final && prevAlt && r.SingleLetterContext
+	single := n == 1 && final
 	if n < r.MinLen && !single {
 		v.Reason = "слишком короткое"
 		return v
@@ -124,6 +124,9 @@ func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st
 			v.Reason = "слово в исключениях"
 			return v
 		}
+	}
+	if single {
+		return decideSingle(v, curCore, curOK, altCore, cur, alt, r, st, prevAlt, start)
 	}
 	if cur.Cyrillic() && alt.Cyrillic() {
 		return decideCyrillic(v, curCore, curOK, altCore, cur, alt, st, final)
@@ -154,14 +157,6 @@ func decidePair(keys []keymap.Key, cur, alt keymap.Lang, r *config.Effective, st
 		return v
 	}
 	if v.AltZipf > 0 {
-		if n == 1 {
-			if single && v.AltZipf >= 4.5 {
-				v.Switch, v.Reason = true, "однобуквенное слово, а предыдущее слово на втором языке"
-			} else {
-				v.Reason = "одна буква: недостаточно уверенности"
-			}
-			return v
-		}
 		if n <= 3 {
 			switch {
 			case v.AltZipf < float32(r.ShortWordMinZipf):
@@ -305,4 +300,47 @@ func edgesOK(keys []keymap.Key, alt string, cur keymap.Lang) bool {
 		}
 	}
 	return trail <= 1
+}
+
+// singleWords — слова из одной буквы.
+var singleWords = [...]string{
+	keymap.EN: "ai",
+	keymap.RU: "авикосуя",
+	keymap.UK: "авзійоуя",
+}
+
+func isSingleWord(l keymap.Lang, core string) bool {
+	if int(l) < 0 || int(l) >= len(singleWords) || len([]rune(core)) != 1 {
+		return false
+	}
+	return strings.Contains(singleWords[l], core)
+}
+
+// decideSingle — слово из одной буквы: z → я, d → в, ш → I.
+// Одна буква — это мало, поэтому исправляем, только если в текущей раскладке такого слова нет,
+// а во второй есть, и при этом фраза только началась или предыдущее слово — на втором языке.
+// Если предыдущее слово на текущем языке («plan b», «vitamin c»), не трогаем.
+func decideSingle(v Verdict, curCore string, curOK bool, altCore string, cur, alt keymap.Lang, r *config.Effective, st *words.Store, prevAlt, start bool) Verdict {
+	switch {
+	case curOK && isSingleWord(cur, curCore):
+		v.Reason = "текущий вариант — слово из одной буквы"
+	case !isSingleWord(alt, altCore):
+		v.Reason = "одна буква: во втором языке такого слова нет"
+	case curOK && st != nil && st.IsWord(cur, curCore):
+		v.Reason = "текущий вариант — ваше слово"
+	case prevAlt && r.SingleLetterContext:
+		v.Switch, v.Reason = true, "слово из одной буквы, а предыдущее слово на втором языке"
+	case start && r.SingleLetterStart:
+		v.Switch, v.Reason = true, "слово из одной буквы в начале фразы"
+	case start:
+		v.Reason = "слово из одной буквы в начале фразы (в этой программе не исправляется)"
+	default:
+		v.Reason = "слово из одной буквы, а предыдущее слово на этом же языке"
+	}
+	if v.Switch {
+		if z, in := lang.Get(alt).Zipf(altCore); in {
+			v.AltZipf = z
+		}
+	}
+	return v
 }

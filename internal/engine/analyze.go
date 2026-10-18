@@ -40,6 +40,7 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *pr
 	// Временный движок с теми же настройками — чтобы проверка шла тем же кодом, что и при наборе.
 	tmp := &Engine{cfg: cfg, store: st, pred: pred, forced: keymap.Unknown}
 	var out []AnalyzeResult
+	prev := keymap.Unknown // язык предыдущего слова — как при наборе
 	lang.Preload()
 	for _, l := range keymap.All {
 		lang.Get(l).PrepareSimilar() // здесь можно и подождать
@@ -61,7 +62,11 @@ func Analyze(text, process string, cfg *config.Config, st *words.Store, pred *pr
 			keys = append(keys, k)
 		}
 		if res.Error == "" {
-			res.Final = Decide(keys, l, &r, st, true, keymap.Unknown)
+			res.Final = Decide(keys, l, &r, st, true, prev)
+			prev = l
+			if res.Final.Switch {
+				prev = res.Final.AltLang
+			}
 			if r.EarlySwitch {
 				for i := r.EarlyMinLen; i < len(keys); i++ {
 					if i < 1 {

@@ -82,6 +82,8 @@ type Rule struct {
 
 	// Исправлять однобуквенные слова (z → я), если предыдущее слово фразы на другом языке.
 	SingleLetterContext *bool `json:"single_letter_context,omitempty"`
+	// Однобуквенное слово в начале фразы (z → я, d → в), если в текущем языке такого слова нет.
+	SingleLetterStart *bool `json:"single_letter_start,omitempty"`
 
 	// Исправление опечаток: "auto" — исправлять при пробеле, "suggest" — только подсказывать, "off".
 	Autocorrect *string `json:"autocorrect,omitempty"`
@@ -299,6 +301,7 @@ func Default() *Config {
 			LearnPassive:             ptr(true),
 			PreferWords:              ptr(""),
 			SingleLetterContext:      ptr(true),
+			SingleLetterStart:        ptr(true),
 			Autocorrect:              ptr("auto"),
 			AutocorrectMinLen:        ptr(4),
 			AutocorrectMaxDistShort:  ptr(1.0),
@@ -321,6 +324,7 @@ func Default() *Config {
 					DictionaryOnly:       ptr(true),
 					MinLen:               ptr(2),
 					EarlySwitch:          ptr(false),
+					SingleLetterStart:    ptr(false), // в начале строки это часто команда или ключ
 					SkipChars:            ptr("@#$/\\_=|:~"),
 					BackspaceDelayMs:     ptr(2),
 					KeyDelayMs:           ptr(1),
@@ -342,10 +346,11 @@ func Default() *Config {
 				Name: "Редакторы кода", Enabled: true,
 				Process: "code.exe;cursor.exe;devenv.exe;idea64.exe;pycharm64.exe;webstorm64.exe;clion64.exe;rider64.exe;goland64.exe;sublime_text.exe;notepad++.exe",
 				Rule: Rule{
-					DictionaryOnly: ptr(true),
-					SkipChars:      ptr("@#$/\\_=|:~(){}<>"),
-					Autocorrect:    ptr("off"),
-					Predict:        ptr(false),
+					DictionaryOnly:    ptr(true),
+					SkipChars:         ptr("@#$/\\_=|:~(){}<>"),
+					SingleLetterStart: ptr(false),
+					Autocorrect:       ptr("off"),
+					Predict:           ptr(false),
 				},
 			},
 			{
@@ -435,6 +440,7 @@ type Effective struct {
 	LearnPassive             bool
 	PreferWords              string
 	SingleLetterContext      bool
+	SingleLetterStart        bool
 	Autocorrect              string
 	AutocorrectMinLen        int
 	AutocorrectMaxDistShort  float64
@@ -489,6 +495,7 @@ func apply(e *Effective, r *Rule) {
 	pick(&e.LearnPassive, r.LearnPassive)
 	pick(&e.PreferWords, r.PreferWords)
 	pick(&e.SingleLetterContext, r.SingleLetterContext)
+	pick(&e.SingleLetterStart, r.SingleLetterStart)
 	pick(&e.Autocorrect, r.Autocorrect)
 	pick(&e.AutocorrectMinLen, r.AutocorrectMinLen)
 	pick(&e.AutocorrectMaxDistShort, r.AutocorrectMaxDistShort)
@@ -794,6 +801,10 @@ func upgrade(c *Config) {
 			}
 			if a.Predict == nil {
 				a.Predict = ptr(false)
+			}
+			// 1.4.1: однобуквенное слово в начале строки там — скорее команда или переменная.
+			if a.SingleLetterStart == nil {
+				a.SingleLetterStart = ptr(false)
 			}
 		}
 	}
